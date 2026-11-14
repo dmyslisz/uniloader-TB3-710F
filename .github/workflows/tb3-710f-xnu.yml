@@ -93,3 +93,37 @@ jobs:
           path: out/
           if-no-files-found: warn
           retention-days: 7
+  build-uniloader:
+    needs: build-xnu
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tb3-710f-xnu-build
+          path: xnu-artifact
+
+      - name: Install ARMv7 build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Compile uniLoader with the XNU handoff path
+        run: |
+          mkdir -p blob
+          cp xnu-artifact/mach_kernel blob/Image
+          : > blob/dtb
+          : > blob/ramdisk
+          : > blob/cacheslice
+          make ARCH=arm CROSS_COMPILE=arm-none-eabi- tb3_710f_xnu_defconfig
+          make ARCH=arm CROSS_COMPILE=arm-none-eabi- -j2
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          image = Path("uniLoader").read_bytes()
+          assert len(image) > 0x28, "uniLoader output is unexpectedly small"
+          assert struct.unpack_from("<I", image, 0x24)[0] == 0x016F2818, "missing Linux zImage magic"
+          print(f"XNU handoff loader size: {len(image)} bytes")
+          PY

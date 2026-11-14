@@ -826,6 +826,18 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		}
 	}
 
+	/* Expose whole pages to XNU's physical memory-disk driver. */
+	if (rd_pa && rd_size) {
+		unsigned int rounded = align_up(rd_size, 0x1000U);
+		if (rounded > rd_capacity) {
+			printk(KERN_EMERG, "xnu: page-rounded ramdisk exceeds capacity\n");
+			while (1)
+				__asm__ __volatile__("wfi");
+		}
+		if (rounded > rd_size)
+			memset((void *)(rd_pa + rd_size), 0, rounded - rd_size);
+		rd_size = rounded;
+	}
 
 	{
 		unsigned int t1 = ba_pa + sizeof(*ba);

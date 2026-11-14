@@ -938,17 +938,17 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		if (!entry_parsed) {
 #ifdef CONFIG_LENOVO_TB3_710F
 			printk(KERN_EMERG,
-			       "xnu: invalid ARM Mach-O entry; refusing fallback\\n");
+			       "xnu: invalid ARM Mach-O entry; refusing fallback\n");
 			while (1)
 				__asm__ __volatile__("wfi");
 #else
 			entry_off = CONFIG_XNU_ENTRY_OFFSET;
 			printk(KERN_WARNING,
-			       "xnu: Mach-O entry parse failed, fallback offset %x\\n",
+			       "xnu: Mach-O entry parse failed, fallback offset %x\n",
 			       entry_off);
 #endif
 		}
-		printk(KERN_INFO, "xnu: image base=%08x entry offset=%x (%s)\\n",
+		printk(KERN_INFO, "xnu: image base=%08x entry offset=%x (%s)\n",
 		       image_base, entry_off,
 		       entry_parsed ? "parsed" : "fallback");
 		if (kernel_pa != load_pa) {
@@ -956,7 +956,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			unsigned int expected_pa;
 			uint64_t ram_end = (uint64_t)phys_base + CONFIG_XNU_MEMSIZE;
 			if (!entry_parsed || image_base < virt_base) {
-				printk(KERN_EMERG, "xnu: invalid Mach-O placement metadata\\n");
+				printk(KERN_EMERG, "xnu: invalid Mach-O placement metadata\n");
 				while (1) __asm__ __volatile__("wfi");
 			}
 			expected_pa = phys_base + (image_base - virt_base);
@@ -964,7 +964,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			    (uint64_t)kernel_pa + ksize > ram_end ||
 			    (uint64_t)load_pa + ksize > ram_end) {
 				printk(KERN_EMERG,
-				       "xnu: placement mismatch base=%08x expected=%08x load=%08x\\n",
+				       "xnu: placement mismatch base=%08x expected=%08x load=%08x\n",
 				       image_base, expected_pa, kernel_pa);
 				while (1) __asm__ __volatile__("wfi");
 			}
@@ -973,7 +973,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			 * from high RAM, so this move can replace its original zImage
 			 * region and place XNU at the VM address used by the linker. */
 			memcpy((void *)kernel_pa, (const void *)load_pa, ksize);
-			printk(KERN_INFO, "xnu: relocated image to linked base %08x\\n",
+			printk(KERN_INFO, "xnu: relocated image to linked base %08x\n",
 			       kernel_pa);
 		}
 		jump_to_xnu(kernel_pa + entry_off, ba_pa);

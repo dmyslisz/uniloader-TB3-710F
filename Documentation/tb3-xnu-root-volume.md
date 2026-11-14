@@ -24,6 +24,20 @@ The TB3 patch also supports a read-only PIO transport for MSDC0 eMMC, but the
 default profile selects MSDC1 microSD so it does not require placing an iOS
 root image on an eMMC partition.
 
+## Verified root-volume metadata
+
+The extracted partition reports an HFSX volume with 4,096-byte allocation
+blocks, 380,887 total blocks, and a size of 1,560,113,152 bytes. Its volume
+header points to journal-info block 33. The journal-info block marks the
+volume as journaled; the journal header has matching start and end offsets
+(0x005A0800), with an 8 MiB journal. This snapshot therefore shows no
+outstanding journal range to replay.
+
+The HFSX directory listing includes /sbin/launchd and
+/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7. This confirms
+the expected ARMv7 iOS startup files are present in the image listing; it
+does not prove the tablet can read or execute them.
+
 ## Hardware and boot status
 
 The Lenovo MT8127 kernel source configures MSDC1 as the removable four-bit SD

@@ -14,11 +14,23 @@ than the current memory-disk capacity, so this unmodified Apple root volume
 cannot be packaged for the current `md0` path. Compressing it does not reduce
 the required uncompressed RAM footprint.
 
-Booting this userspace therefore requires a block-backed root device in XNU
-(for example, read-only eMMC or SD storage) or a separately built smaller
-root volume that fits in RAM. The current loader does not implement an eMMC/SD
-block driver or mount this HFSX volume as a block device. The existing
-`tools/pack_tb3_ramdisk.py` helper should reject this image at its RAM limit.
+## Block-backed root path
+
+The Lenovo MT8127 kernel source identifies MSDC0 as the eMMC host. Its
+TB3-710F board configuration uses an 8-bit data bus and the 200 MHz MSDC
+clock source; the controller registers are mapped at physical
+`0x11230000` (the Linux virtual base is `0xF1230000`). A practical XNU
+transport should start with low-speed, read-only PIO and avoid DMA and writes.
+The device's eMMC user area is much larger than this root volume.
+
+The XNU tree already has `IOBlockStorageDevice`, `IOStorage`, and
+`IOMediaBSDClient` support, plus board-specific PIO SD block-device examples.
+The TB3 implementation can follow that model: a native MSDC0/eMMC transport
+publishes read-only media, then the existing partition and HFSX code can mount
+the root volume. The current TB3 profile does not yet include this transport or
+a block-backed root mount. A raw HFSX image must be placed in a dedicated
+block range before a hardware root-mount test; do not overwrite LineageOS
+partitions as part of driver development.
 
 `tools/pack_tb3_ramdisk.py` validates the HFS+ volume header and RAM limit,
 then writes a deterministic gzip file. It does not make a filesystem, extract

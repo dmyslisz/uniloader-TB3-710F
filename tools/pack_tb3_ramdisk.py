@@ -66,7 +66,7 @@ def pack(source_path: Path, output_path: Path, ramdisk_pa: int, ram_end: int) ->
             temp_name = temporary.name
             with source.open("rb") as raw:
                 with gzip.GzipFile(
-                    fileobj=temporary, mode="wb", compresslevel=9, mtime=0
+                    filename="", fileobj=temporary, mode="wb", compresslevel=9, mtime=0
                 ) as compressed:
                     while True:
                         chunk = raw.read(1024 * 1024)

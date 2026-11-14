@@ -863,8 +863,18 @@ diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
 @@ -466,2 +466,7 @@ OTHER_CXXFLAGS	=
  
 +ifeq ($(MACHINE_CONFIG),MT8127_TB3)
-+OTHER_CFLAGS += -Wno-error=implicit-function-declaration
++OTHER_CFLAGS += -Wno-error=implicit-function-declaration -Wno-error=int-conversion
 +OTHER_CXXFLAGS += -Wno-error=implicit-function-declaration -Wno-c++11-narrowing
 +endif
 +
  # Linux hosts: relax warnings that newer clang promotes to errors, and
+
+diff --git a/xnu/bsd/sys/spawn_internal.h b/xnu/bsd/sys/spawn_internal.h
+--- a/xnu/bsd/sys/spawn_internal.h
++++ b/xnu/bsd/sys/spawn_internal.h
+@@ -146,2 +146,5 @@
+ #define POSIX_SPAWN_APPTYPE_IOS_APPLEDAEMON    0x0001          /* it is an iOS apple daemon  */
++#define POSIX_SPAWN_APPTYPE_OSX_TAL            0
++#define POSIX_SPAWN_APPTYPE_OSX_WIDGET         0
++#define POSIX_SPAWN_APPTYPE_DELAYIDLESLEEP     0
+ #else /* TARGET_OS_EMBEDDED */

@@ -6,6 +6,8 @@ on:
     branches: [codex/tb3-xnu-loader]
     paths:
       - "xnu/patches/tb3-mt8127.patch"
+      - "arch/arm/load-kernel.c"
+      - "configs/tb3_710f_xnu_defconfig"
       - ".github/workflows/tb3-710f-xnu.yml"
 
 permissions:

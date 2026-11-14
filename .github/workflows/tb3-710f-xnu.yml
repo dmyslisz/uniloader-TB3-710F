@@ -31,7 +31,7 @@ jobs:
           # In newer GCC, "bool" is a language keyword; this 2016 C source used it as an identifier.
           sed -i 's/\<bool\>/value/g' xnu-deps-linux/bootstrap_cmds-60/migcom.tproj/strdefs.h
           sed -i 's/\<bool\>/value/g' xnu-deps-linux/bootstrap_cmds-60/migcom.tproj/string.c
-          make -C xnu-deps-linux -j2 all
+          make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
           sudo mkdir -p "$TOOLROOT/bin"
           ld_candidate=$(find "$TOOLROOT/bin" -maxdepth 1 -type f -name '*ld' | head -n 1)

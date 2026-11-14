@@ -8,12 +8,14 @@ on:
       - "xnu/patches/tb3-mt8127.patch"
       - "arch/arm/load-kernel.c"
       - "configs/tb3_710f_xnu_defconfig"
+      - "tools/gen_tb3_adt.py"
       - ".github/workflows/tb3-710f-xnu.yml"
   pull_request:
     paths:
       - "xnu/patches/tb3-mt8127.patch"
       - "arch/arm/load-kernel.c"
       - "configs/tb3_710f_xnu_defconfig"
+      - "tools/gen_tb3_adt.py"
       - ".github/workflows/tb3-710f-xnu.yml"
 
 permissions:
@@ -122,7 +124,7 @@ jobs:
         run: |
           mkdir -p blob
           cp xnu-artifact/mach_kernel blob/Image
-          : > blob/dtb
+          python3 tools/gen_tb3_adt.py blob/dtb
           : > blob/ramdisk
           : > blob/cacheslice
           make ARCH=arm CROSS_COMPILE=arm-none-eabi- tb3_710f_xnu_defconfig
@@ -135,3 +137,24 @@ jobs:
           assert struct.unpack_from("<I", image, 0x24)[0] == 0x016F2818, "missing Linux zImage magic"
           print(f"XNU handoff loader size: {len(image)} bytes")
           PY
+
+      - name: Collect early handoff artifact
+        run: |
+          mkdir -p out-handoff
+          cp uniLoader out-handoff/
+          cp xnu-artifact/mach_kernel out-handoff/
+          cp blob/dtb out-handoff/tb3-device-tree.adt
+          cat > out-handoff/README.txt <<'EOF'
+          Early XNU handoff build for Lenovo TB3-710F.
+          Contains the compiled ARMv7 XNU Mach-O, uniLoader, and a minimal
+          Apple-format device tree for first-kernel bring-up.
+          This is not a working iOS image: no iOS HFS+ root filesystem or
+          dyld shared cache is included. Do not flash this artifact as-is.
+          EOF
+          ls -lah out-handoff
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tb3-710f-xnu-early-handoff
+          path: out-handoff/
+          retention-days: 7

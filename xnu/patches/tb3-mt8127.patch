@@ -835,15 +835,6 @@ index 1d213d5..a7d4b9c 100644
  pexpert/arm/i9100_timer.c standard
  pexpert/arm/pe_omap3430.c		standard
 
-diff --git a/nokextd/IOS7NoKextd035.h b/nokextd/IOS7NoKextd035.h
---- a/nokextd/IOS7NoKextd035.h
-+++ b/nokextd/IOS7NoKextd035.h
-@@ -6 +6 @@
--#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100)
-+#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100) && !defined(BOARD_CONFIG_MT8127_TB3)
- #error IOS7NoKextd035 requires the LEO/J1XLTE/I9100 compilation target
- #endif
- #ifdef NO_KEXTD
 diff --git a/xnu/osfmk/mach/message.h b/xnu/osfmk/mach/message.h
 --- a/xnu/osfmk/mach/message.h
 +++ b/xnu/osfmk/mach/message.h

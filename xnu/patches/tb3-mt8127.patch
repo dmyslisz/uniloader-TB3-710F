@@ -87,7 +87,7 @@ new file mode 100644
 index 0000000..112b6ed
 --- /dev/null
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
-@@ -0,0 +1,695 @@
+@@ -0,0 +1,697 @@
 +/* Read-only PIO storage for Lenovo TB3-710F / MT8127 MSDC0 eMMC and MSDC1 SD.
 + * MSDC0 relies on the LK eMMC pin setup; MSDC1 configures the external SD pins.
 + * Opt in with tb3_emmc=1 or tb3_sd=1. This driver never writes to media.
@@ -766,9 +766,11 @@ index 0000000..112b6ed
 +
 +    IOS7TB3MSDC *device = new IOS7TB3MSDC;
 +    if (!device) { IOLog("TB3 MSDC: allocation failed\n"); return; }
-+    if (sdEnabled) device->selectSDCard();
 +    bool attached = false, success = false;
-+    if (device->init()) attached = device->attach(platform);
++    if (device->init()) {
++        if (sdEnabled) device->selectSDCard();
++        attached = device->attach(platform);
++    }
 +    if (attached && device->start(platform)) {
 +        OSObject *decoded = OSUnserializeXML(ios7labStoragePersonalities);
 +        OSArray *drivers = OSDynamicCast(OSArray, decoded);

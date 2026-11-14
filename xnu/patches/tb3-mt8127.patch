@@ -838,10 +838,7 @@ index 1d213d5..a7d4b9c 100644
 diff --git a/nokextd/IOS7NoKextd035.h b/nokextd/IOS7NoKextd035.h
 --- a/nokextd/IOS7NoKextd035.h
 +++ b/nokextd/IOS7NoKextd035.h
-@@ -4,7 +4,7 @@
- /* Scoped to the actual LEO/J1XLTE conditional translation units. This explicit
-  * source prefix follows generated numeric feature preincludes; command-line
-  * -D alone would not override an inherited no_kextd.h defining zero. */
+@@ -6 +6 @@
 -#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100)
 +#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100) && !defined(BOARD_CONFIG_MT8127_TB3)
  #error IOS7NoKextd035 requires the LEO/J1XLTE/I9100 compilation target

@@ -45,6 +45,15 @@ jobs:
           sed -i 's/\<bool\>/value/g' xnu-deps-linux/bootstrap_cmds-60/migcom.tproj/string.c
           # strmode(3) is BSD-only and appears only in verbose ar listings.
           sed -i 's/(void)strmode(chdr.mode, buf);/strcpy(buf, "----------");/' xnu-deps-linux/cctools-836/ar/contents.c
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("xnu-deps-linux/cctools-836/as/input-scrub.c")
+          s = p.read_text()
+          start = s.index("  if (errno > sys_nerr)")
+          end = s.index("  (void)putc", start)
+          s = s[:start] + '  fprintf(stderr, "%s.", strerror(errno));\\n' + s[end:]
+          p.write_text(s)
+          PY
           make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
           sudo mkdir -p "$TOOLROOT/bin"

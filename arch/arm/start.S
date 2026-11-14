@@ -78,6 +78,7 @@ _start:
 	mcr	p15, 4, r1, c1, c1, 2	/* HCPTR: full coprocessor access */
 	mov	r1, #0
 	mcr	p15, 4, r1, c2, c0, 2	/* HTTBCR = 0 */
+	#ifndef CONFIG_LENOVO_TB3_710F
 	movw	r2, #0x5000		/* keep painting - now in magenta slot */
 	movt	r2, #0x57E6
 	movw	r3, #0x00FF
@@ -94,6 +95,7 @@ _start:
 91:	str	r3, [r2], #4
 	subs	r1, r1, #1
 	bne	91b
+	#endif
 	mov	r1, #0x13		/* SVC | irq+fiq stay masked via SPSR */
 	orr	r1, r1, #0xc0
 	msr	spsr_cxsf, r1
@@ -112,6 +114,7 @@ _start:
 	 *   red   @0x40200000 (paranoid alternate DRAM window)
 	 * A visible bar proves execution and identifies the live scanout.
 	 * No bar at all => our code never executed.                    */
+	#ifndef CONFIG_LENOVO_TB3_710F
 	movw	r0, #0x8000
 	movt	r0, #0x57E1
 	movw	r1, #0xFF00
@@ -157,6 +160,7 @@ _start:
 	movw	r1, #0xFFFF
 	movt	r1, #0xFF00		/* cyan 0xFF00FFFF */
 	bl	paint
+	#endif /* !CONFIG_LENOVO_TB3_710F */
 
 	/* Fresh flag test - paint() above destroyed the old ones. */
 	cmp	r9, #0
@@ -254,12 +258,15 @@ eng2:
 	str	r10, [r1]
 
 	/* ---- common path ---- */
-5:	/* D: WHITE @fb+0x11E000 = relocation done (both paths). */
+5:
+#ifndef CONFIG_LENOVO_TB3_710F
+	/* D: WHITE @fb+0x11E000 = relocation done (both paths). */
 	movw	r0, #0xE000
 	movt	r0, #0x57E1
 	movw	r1, #0xFFFF
 	movt	r1, #0xFFFF
 	bl	paint
+#endif /* !CONFIG_LENOVO_TB3_710F */
 
 	mrc	p15, 0, r12, c1, c0, 0
 	bic	r12, #(1 << 12)
@@ -368,21 +375,27 @@ entered_hyp:
 .section .payload, "ax", %progbits
 .globl _kernel_start
 _kernel_start:
+#ifndef CONFIG_LENOVO_TB3_710F_FB_SMOKE
 	.incbin "blob/Image"
+#endif
 .globl _kernel_end
 _kernel_end:
 
 .align	4
 .globl _dt_start
 _dt_start:
+#ifndef CONFIG_LENOVO_TB3_710F_FB_SMOKE
 	.incbin "blob/dtb"
+#endif
 .globl _dt_end
 _dt_end:
 
 .align	4
 .globl _ramdisk_start
 _ramdisk_start:
+#ifndef CONFIG_LENOVO_TB3_710F_FB_SMOKE
 	.incbin "blob/ramdisk"
+#endif
 .globl _ramdisk_end
 _ramdisk_end:
 
@@ -415,3 +428,4 @@ ramdisk_size:
 .globl cacheslice_size
 cacheslice_size:
 	.word cacheslice_end - cacheslice_start
+

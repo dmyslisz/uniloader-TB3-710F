@@ -1,0 +1,48 @@
+name: TB3-710F framebuffer smoke build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARMv7 build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Configure TB3-710F framebuffer smoke profile
+        run: make ARCH=arm CROSS_COMPILE=arm-none-eabi- tb3_710f_defconfig
+
+      - name: Build uniLoader
+        run: make ARCH=arm CROSS_COMPILE=arm-none-eabi- -j"$(nproc)"
+
+      - name: Check zImage header and record checksum
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          image = Path("uniLoader").read_bytes()
+          assert len(image) > 0x28, "uniLoader output is unexpectedly small"
+          assert struct.unpack_from("<I", image, 0x24)[0] == 0x016F2818, "missing Linux zImage magic"
+          print(f"uniLoader size: {len(image)} bytes")
+          PY
+          sha256sum uniLoader > SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tb3-710f-framebuffer-smoke
+          path: |
+            uniLoader
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+

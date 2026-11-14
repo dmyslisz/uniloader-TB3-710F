@@ -406,7 +406,13 @@ uniloader-libs := $(patsubst %,%/lib.a, $(uniloader-lib-dirs))
 uniloader-all := $(uniloader-objs) $(uniloader-libs)
 
 # Linker script dependencies
-linker-script-deps := $(KERNEL_PATH) $(RAMDISK_PATH)
+ifeq ($(CONFIG_LENOVO_TB3_710F_FB_SMOKE),y)
+# The framebuffer smoke profile embeds no OS payload and must build without
+# placeholder Image/DTB/ramdisk files.
+linker-script-deps :=
+else
+linker-script-deps := $(KERNEL_PATH) $(DT_PATH) $(RAMDISK_PATH)
+endif
 
 # ===========================================================================
 # Build targets
@@ -597,3 +603,4 @@ FORCE:
 # Declare the contents of the .PHONY variable as phony.  We keep that
 # information in a variable so we can use it in if_changed and friends.
 .PHONY: $(PHONY)
+

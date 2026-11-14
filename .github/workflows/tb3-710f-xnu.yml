@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      TOOLROOT: ${{ runner.temp }}/i9100-toolchain
+      TOOLROOT: /tmp/i9100-toolchain
     steps:
       - uses: actions/checkout@v4
 

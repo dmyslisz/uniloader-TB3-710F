@@ -88,6 +88,14 @@ config XNU_PHYS_BASE
 		hex "Physical base XNU is told about (kernel loads at +0x1000)"
 		default 0x22000000
 
+config XNU_LOAD_PA
+	hex "Physical address where the linked XNU Mach-O is placed"
+	default 0x0
+	help
+	  Zero keeps the current payload staging address. Otherwise uniLoader
+	  stages the image separately, then copies it here before handoff so
+	  the kernel can run at its linked address without rebasing.
+
 config XNU_VIRT_BASE
 		hex "Virtual base XNU maps physical memory at"
 		default 0x80000000

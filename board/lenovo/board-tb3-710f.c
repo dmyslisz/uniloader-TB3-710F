@@ -38,6 +38,17 @@ static void tb3_fb_marker(void)
 	__asm__ volatile("dsb sy" ::: "memory");
 }
 
+void tb3_smoke_wait(void)
+{
+	/* MT8127 WDT_RESTART: keep LK's inherited watchdog from rebooting us. */
+	volatile uint32_t *wdt_restart = (volatile uint32_t *)0x10007008u;
+
+	for (;;) {
+		*wdt_restart = 0x1971u;
+		__asm__ volatile("dsb sy" ::: "memory");
+	}
+}
+
 static int tb3_710f_late_init(void)
 {
 	tb3_fb_marker();

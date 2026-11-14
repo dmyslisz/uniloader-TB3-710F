@@ -84,10 +84,10 @@ index bf9aa7f..c041d07 100644
  {
 diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
 new file mode 100644
-index 0000000..0ec39ca
+index 0000000..112b6ed
 --- /dev/null
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
-@@ -0,0 +1,578 @@
+@@ -0,0 +1,695 @@
 +/* Read-only PIO storage for Lenovo TB3-710F / MT8127 MSDC0 eMMC and MSDC1 SD.
 + * MSDC0 relies on the LK eMMC pin setup; MSDC1 configures the external SD pins.
 + * Opt in with tb3_emmc=1 or tb3_sd=1. This driver never writes to media.
@@ -111,12 +111,29 @@ index 0000000..0ec39ca
 +#define TB3_PERICFG_BYTES    0x100U
 +#define TB3_GPIO_PA          0x10005000U
 +#define TB3_GPIO_BYTES       0x1000U
++#define TB3_PWRAP_PA         0x1000d000U
++#define TB3_PWRAP_BYTES      0x200U
 +#define TB3_PERI_PDN0_CLR    0x010U
 +#define TB3_MSDC_GATE_BIT    (1U << 13)
 +#define TB3_MSDC1_GATE_BIT   (1U << 14)
 +#define TB3_MSDC_HCLK_HZ     200000000U
 +#define TB3_MSDC_CMD_LIMIT   1000000U
 +#define TB3_MSDC_DATA_LIMIT  2000000U
++#define TB3_PWRAP_WACS2_CMD  0x09cU
++#define TB3_PWRAP_WACS2_RDATA 0x0a0U
++#define TB3_PWRAP_WACS2_VLDCLR 0x0a4U
++#define TB3_PWRAP_INIT_DONE  (1U << 21)
++#define TB3_PWRAP_FSM_MASK   (7U << 16)
++#define TB3_PWRAP_FSM_IDLE   (0U << 16)
++#define TB3_PWRAP_FSM_READ   (6U << 16)
++#define TB3_PMIC_VMC_EN_REG  0x0504U
++#define TB3_PMIC_VMCH_EN_REG 0x0506U
++#define TB3_PMIC_VMC_VOSEL_REG 0x052aU
++#define TB3_PMIC_VMCH_VOSEL_REG 0x052cU
++#define TB3_PMIC_VMC_EN_BIT  (1U << 12)
++#define TB3_PMIC_VMCH_EN_BIT (1U << 14)
++#define TB3_PMIC_VMC_VOSEL_BIT (1U << 4)
++#define TB3_PMIC_VMCH_VOSEL_BIT (1U << 7)
 +
 +#define R_MSDC_CFG           0x000U
 +#define R_MSDC_IOCON         0x004U
@@ -178,12 +195,15 @@ index 0000000..0ec39ca
 +    IOMemoryDescriptor *msdcDesc;
 +    IOMemoryDescriptor *periDesc;
 +    IOMemoryDescriptor *gpioDesc;
++    IOMemoryDescriptor *pwrapDesc;
 +    IOMemoryMap *msdcMap;
 +    IOMemoryMap *periMap;
 +    IOMemoryMap *gpioMap;
++    IOMemoryMap *pwrapMap;
 +    volatile UInt32 *regs;
 +    volatile UInt32 *peri;
 +    volatile UInt8 *gpio;
++    volatile UInt32 *pwrap;
 +    IOLock *lock;
 +    UInt64 sectors;
 +    UInt32 rca;
@@ -209,6 +229,11 @@ index 0000000..0ec39ca
 +    IOReturn initializeCard();
 +    IOReturn readSector(UInt64 sector, UInt8 *bytes);
 +    void configureSDPins();
++    IOReturn pwrapWait(UInt32 expectedState, UInt32 *value = 0);
++    IOReturn pwrapRead(UInt32 address, UInt16 *value);
++    IOReturn pwrapWrite(UInt32 address, UInt16 value);
++    IOReturn pwrapUpdateBits(UInt32 address, UInt16 mask, UInt16 value);
++    IOReturn powerSDCard();
 +
 +public:
 +    void selectSDCard() { sdCard = true; }
@@ -241,9 +266,9 @@ index 0000000..0ec39ca
 +bool IOS7TB3MSDC::init(OSDictionary *properties)
 +{
 +    if (!IOBlockStorageDevice::init(properties)) return false;
-+    msdcDesc = periDesc = gpioDesc = 0;
-+    msdcMap = periMap = gpioMap = 0;
-+    regs = peri = 0;
++    msdcDesc = periDesc = gpioDesc = pwrapDesc = 0;
++    msdcMap = periMap = gpioMap = pwrapMap = 0;
++    regs = peri = pwrap = 0;
 +    gpio = 0;
 +    lock = 0;
 +    sectors = 0;
@@ -297,23 +322,39 @@ index 0000000..0ec39ca
 +    if (sdCard)
 +        gpioDesc = IOMemoryDescriptor::withPhysicalAddress(TB3_GPIO_PA,
 +            TB3_GPIO_BYTES, kIODirectionInOut);
-+    if (!lock || !msdcDesc || !periDesc || (sdCard && !gpioDesc)) return false;
++    if (sdCard)
++        pwrapDesc = IOMemoryDescriptor::withPhysicalAddress(TB3_PWRAP_PA,
++            TB3_PWRAP_BYTES, kIODirectionInOut);
++    if (!lock || !msdcDesc || !periDesc || (sdCard && (!gpioDesc || !pwrapDesc))) return false;
 +
 +    msdcMap = msdcDesc->map(kIOMapInhibitCache);
 +    periMap = periDesc->map(kIOMapInhibitCache);
 +    if (sdCard) gpioMap = gpioDesc->map(kIOMapInhibitCache);
++    if (sdCard) pwrapMap = pwrapDesc->map(kIOMapInhibitCache);
 +    if (!msdcMap || !periMap || !msdcMap->getAddress() ||
 +        !periMap->getAddress() ||
-+        (sdCard && (!gpioMap || !gpioMap->getAddress()))) return false;
++        (sdCard && (!gpioMap || !gpioMap->getAddress() ||
++                    !pwrapMap || !pwrapMap->getAddress()))) return false;
 +    regs = (volatile UInt32 *)msdcMap->getAddress();
 +    peri = (volatile UInt32 *)periMap->getAddress();
-+    if (sdCard) gpio = (volatile UInt8 *)gpioMap->getAddress();
++    if (sdCard) {
++        gpio = (volatile UInt8 *)gpioMap->getAddress();
++        pwrap = (volatile UInt32 *)pwrapMap->getAddress();
++    }
 +
 +    /* PERI_PDN0_CLR is write-one-to-clear: enable only the chosen MSDC gate. */
 +    peri[TB3_PERI_PDN0_CLR / 4U] = gateBit;
 +    OSSynchronizeIO();
 +    delayUS(10);
-+    if (sdCard) configureSDPins();
++    if (sdCard) {
++        configureSDPins();
++        IOReturn powerResult = powerSDCard();
++        if (powerResult != kIOReturnSuccess) {
++            IOLog("TB3 MSDC1: MT6323 SD rail setup failed (%08x)\n",
++                  (unsigned)powerResult);
++            return false;
++        }
++    }
 +
 +    UInt32 version = readReg(0x100U);
 +    if (!version || version == 0xffffffffU) {
@@ -341,11 +382,87 @@ index 0000000..0ec39ca
 +    if (msdcMap) msdcMap->release();
 +    if (periMap) periMap->release();
 +    if (gpioMap) gpioMap->release();
++    if (pwrapMap) pwrapMap->release();
 +    if (msdcDesc) msdcDesc->release();
 +    if (periDesc) periDesc->release();
 +    if (gpioDesc) gpioDesc->release();
++    if (pwrapDesc) pwrapDesc->release();
 +    if (lock) IOLockFree(lock);
 +    IOBlockStorageDevice::free();
++}
++
++IOReturn IOS7TB3MSDC::pwrapWait(UInt32 expectedState, UInt32 *value)
++{
++    if (!pwrap) return kIOReturnNotReady;
++    for (UInt32 i = 0; i < 1000U; ++i) {
++        OSSynchronizeIO();
++        UInt32 status = pwrap[TB3_PWRAP_WACS2_RDATA / 4U];
++        if (!(status & TB3_PWRAP_INIT_DONE)) return kIOReturnNotReady;
++        if ((status & TB3_PWRAP_FSM_MASK) == expectedState) {
++            if (value) *value = status;
++            return kIOReturnSuccess;
++        }
++        IODelay(1U);
++    }
++    return kIOReturnTimeout;
++}
++
++IOReturn IOS7TB3MSDC::pwrapRead(UInt32 address, UInt16 *value)
++{
++    if (!value || (address & 1U)) return kIOReturnBadArgument;
++    IOReturn result = pwrapWait(TB3_PWRAP_FSM_IDLE);
++    if (result != kIOReturnSuccess) return result;
++    pwrap[TB3_PWRAP_WACS2_CMD / 4U] = ((address >> 1) << 16);
++    OSSynchronizeIO();
++    UInt32 status = 0;
++    result = pwrapWait(TB3_PWRAP_FSM_READ, &status);
++    if (result != kIOReturnSuccess) return result;
++    *value = (UInt16)(status & 0xffffU);
++    pwrap[TB3_PWRAP_WACS2_VLDCLR / 4U] = 1U;
++    OSSynchronizeIO();
++    return pwrapWait(TB3_PWRAP_FSM_IDLE);
++}
++
++IOReturn IOS7TB3MSDC::pwrapWrite(UInt32 address, UInt16 value)
++{
++    if (address & 1U) return kIOReturnBadArgument;
++    IOReturn result = pwrapWait(TB3_PWRAP_FSM_IDLE);
++    if (result != kIOReturnSuccess) return result;
++    pwrap[TB3_PWRAP_WACS2_CMD / 4U] = (1U << 31) | ((address >> 1) << 16) | value;
++    OSSynchronizeIO();
++    return pwrapWait(TB3_PWRAP_FSM_IDLE);
++}
++
++IOReturn IOS7TB3MSDC::pwrapUpdateBits(UInt32 address, UInt16 mask, UInt16 value)
++{
++    UInt16 current = 0;
++    IOReturn result = pwrapRead(address, &current);
++    if (result != kIOReturnSuccess) return result;
++    UInt16 updated = (UInt16)((current & (UInt16)~mask) | (value & mask));
++    if (updated == current) return kIOReturnSuccess;
++    return pwrapWrite(address, updated);
++}
++
++IOReturn IOS7TB3MSDC::powerSDCard()
++{
++    /* Lenovo's MT8127 kernel selects 3.3 V on MT6323 VMC/VMCH for MSDC1.
++     * Match msdc_sd_power(): select voltage, enable VMC, then enable VMCH.
++     * VMCH stays on for this boot, matching MSDC_SD_NEED_POWER on this board. */
++    IOReturn result = pwrapUpdateBits(TB3_PMIC_VMC_VOSEL_REG,
++        (UInt16)TB3_PMIC_VMC_VOSEL_BIT, (UInt16)TB3_PMIC_VMC_VOSEL_BIT);
++    if (result == kIOReturnSuccess)
++        result = pwrapUpdateBits(TB3_PMIC_VMCH_VOSEL_REG,
++            (UInt16)TB3_PMIC_VMCH_VOSEL_BIT, (UInt16)TB3_PMIC_VMCH_VOSEL_BIT);
++    if (result == kIOReturnSuccess)
++        result = pwrapUpdateBits(TB3_PMIC_VMC_EN_REG,
++            (UInt16)TB3_PMIC_VMC_EN_BIT, (UInt16)TB3_PMIC_VMC_EN_BIT);
++    if (result == kIOReturnSuccess) {
++        IODelay(1000U);
++        result = pwrapUpdateBits(TB3_PMIC_VMCH_EN_REG,
++            (UInt16)TB3_PMIC_VMCH_EN_BIT, (UInt16)TB3_PMIC_VMCH_EN_BIT);
++    }
++    if (result == kIOReturnSuccess) IODelay(5000U);
++    return result;
 +}
 +
 +IOReturn IOS7TB3MSDC::setClock(UInt32 hz)

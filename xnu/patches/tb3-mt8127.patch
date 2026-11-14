@@ -856,3 +856,15 @@ diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
  #include <kern/kalloc.h>
 +#include <IOKit/IOLib.h>
  #include <libkern/OSByteOrder.h>
+
+diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
+--- a/xnu/makedefs/MakeInc.def
++++ b/xnu/makedefs/MakeInc.def
+@@ -465,3 +465,8 @@ OTHER_CXXFLAGS	=
+ 
++ifeq ($(MACHINE_CONFIG),MT8127_TB3)
++OTHER_CFLAGS += -Wno-error=implicit-function-declaration
++OTHER_CXXFLAGS += -Wno-error=implicit-function-declaration -Wno-c++11-narrowing
++endif
++
+ # Linux hosts: relax warnings that newer clang promotes to errors, and

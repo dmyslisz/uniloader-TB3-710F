@@ -40,8 +40,11 @@ jobs:
           s = makefile.read_text().replace("CFLAGS = -isysroot", "CFLAGS = -std=gnu89 -isysroot")
           makefile.write_text(s)
           source = Path("xnu-src/xnu/SETUP/md/md.c")
-          s = source.read_text().replace("#include <sys/stat.h>", "#include <sys/stat.h>\\n#include <fcntl.h>\\n#include <unistd.h>")
+          s = source.read_text().replace("#include <sys/stat.h>", "#include <sys/stat.h>" + chr(10) + "#include <fcntl.h>" + chr(10) + "#include <unistd.h>")
           source.write_text(s)
+          makefile = Path("xnu-src/xnu/SETUP/md/Makefile")
+          s = makefile.read_text().replace("WARNFLAGS = -Wall", "WARNFLAGS = -Wall -Wno-error=implicit-function-declaration")
+          makefile.write_text(s)
           PY
           git -C xnu-src apply "$GITHUB_WORKSPACE/xnu/patches/tb3-mt8127.patch"
 

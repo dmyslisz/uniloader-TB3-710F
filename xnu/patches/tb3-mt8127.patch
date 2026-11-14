@@ -924,3 +924,29 @@ diff --git a/xnu/libkern/c++/OSRuntime.cpp b/xnu/libkern/c++/OSRuntime.cpp
 +	".thumb_func\n.globl _memset.297\n_memset.297:\n b.w _memset\n"
  	".thumb_func\n.globl _memset.188\n_memset.188:\n b.w _memset\n");
  #endif
+diff --git a/xnu/iokit/bsddev/IOKitBSDInit.cpp b/xnu/iokit/bsddev/IOKitBSDInit.cpp
+--- a/xnu/iokit/bsddev/IOKitBSDInit.cpp
++++ b/xnu/iokit/bsddev/IOKitBSDInit.cpp
+@@ -420,2 +420,22 @@
++#if defined(BOARD_CONFIG_MT8127_TB3)
++        unsigned int tb3rd_pa = 0;
++        unsigned int tb3rd_size = 0;
++        boolean_t have_pa = PE_parse_boot_argn("tb3rd_pa", &tb3rd_pa, sizeof(tb3rd_pa));
++        boolean_t have_size = PE_parse_boot_argn("tb3rd_size", &tb3rd_size, sizeof(tb3rd_size));
++        if (have_pa || have_size) {
++            uint64_t tb3rd_end = (uint64_t)tb3rd_pa + tb3rd_size;
++            if (!have_pa || !have_size || !tb3rd_size ||
++                (tb3rd_pa & 0xfffU) || (tb3rd_size & 0xfffU) ||
++                tb3rd_pa < 0x80000000U || tb3rd_end > 0xBED00000ULL)
++                panic("TB3 invalid in-memory root disk range");
++            if (mdevlookup(0) >= 0)
++                panic("TB3 root memory device md0 already exists");
++            if (mdevadd(0, (uint64_t)tb3rd_pa >> 12,
++                        tb3rd_size >> 12, 1) < 0)
++                panic("TB3 could not register root memory device md0");
++            IOLog("TB3 root disk md0: pa=0x%08x bytes=0x%08x\\n",
++                  tb3rd_pa, tb3rd_size);
++        }
++#endif
+ #if defined(BOARD_CONFIG_ARMPBA8)
+         /* PC-only lab storage. QEMU's extra low RAM backs an image; the

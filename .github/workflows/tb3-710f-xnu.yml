@@ -71,6 +71,13 @@ jobs:
           export SDKROOT
           make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" MAKEJOBS=--jobs=3 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
 
+      - name: Validate ARMv7 Mach-O kernel
+        run: |
+          kernel="$(find xnu-src/xnu/BUILD -type f -name mach_kernel -print -quit)"
+          test -n "$kernel"
+          file "$kernel"
+          xcrun otool -hv "$kernel"
+
       - name: Collect build outputs
         if: always()
         run: |

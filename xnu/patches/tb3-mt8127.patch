@@ -836,7 +836,6 @@ index 1d213d5..a7d4b9c 100644
  pexpert/arm/pe_omap3430.c		standard
 
 diff --git a/nokextd/IOS7NoKextd035.h b/nokextd/IOS7NoKextd035.h
-index 0000000..0000000 100644
 --- a/nokextd/IOS7NoKextd035.h
 +++ b/nokextd/IOS7NoKextd035.h
 @@ -4,7 +4,7 @@
@@ -849,7 +848,6 @@ index 0000000..0000000 100644
  #endif
  #ifdef NO_KEXTD
 diff --git a/xnu/osfmk/mach/message.h b/xnu/osfmk/mach/message.h
-index 0000000..0000000 100644
 --- a/xnu/osfmk/mach/message.h
 +++ b/xnu/osfmk/mach/message.h
 @@ -358,6 +358,9 @@ typedef struct
@@ -863,7 +861,6 @@ index 0000000..0000000 100644
  
  typedef struct
 diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
-index 0000000..0000000 100644
 --- a/xnu/bsd/kern/decmpfs.c
 +++ b/xnu/bsd/kern/decmpfs.c
 @@ -45,3 +45,4 @@

@@ -860,7 +860,7 @@ diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
 diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
 --- a/xnu/makedefs/MakeInc.def
 +++ b/xnu/makedefs/MakeInc.def
-@@ -465,3 +465,8 @@ OTHER_CXXFLAGS	=
+@@ -466,2 +466,7 @@ OTHER_CXXFLAGS	=
  
 +ifeq ($(MACHINE_CONFIG),MT8127_TB3)
 +OTHER_CFLAGS += -Wno-error=implicit-function-declaration

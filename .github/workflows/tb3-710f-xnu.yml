@@ -47,7 +47,7 @@ jobs:
           mkdir -p BUILD
           SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
           export SDKROOT
-          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" MAKEJOBS=3 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
+          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" MAKEJOBS=--jobs=3 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
 
       - name: Collect build outputs
         if: always()

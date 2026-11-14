@@ -834,3 +834,40 @@ index 1d213d5..a7d4b9c 100644
  pexpert/arm/pe_exynos4210_i9100.c standard
  pexpert/arm/i9100_timer.c standard
  pexpert/arm/pe_omap3430.c		standard
+
+diff --git a/nokextd/IOS7NoKextd035.h b/nokextd/IOS7NoKextd035.h
+index 0000000..0000000 100644
+--- a/nokextd/IOS7NoKextd035.h
++++ b/nokextd/IOS7NoKextd035.h
+@@ -4,7 +4,7 @@
+ /* Scoped to the actual LEO/J1XLTE conditional translation units. This explicit
+  * source prefix follows generated numeric feature preincludes; command-line
+  * -D alone would not override an inherited no_kextd.h defining zero. */
+-#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100) && !defined(BOARD_CONFIG_MT8127_TB3)
+ #error IOS7NoKextd035 requires the LEO/J1XLTE/I9100 compilation target
+ #endif
+ #ifdef NO_KEXTD
+diff --git a/xnu/osfmk/mach/message.h b/xnu/osfmk/mach/message.h
+index 0000000..0000000 100644
+--- a/xnu/osfmk/mach/message.h
++++ b/xnu/osfmk/mach/message.h
+@@ -358,6 +358,9 @@ typedef struct
+   mach_msg_id_t		msgh_id;
+ } mach_msg_header_t;
+ 
++/* Kernel MIG server reply cleanup helper. */
++extern void mach_msg_destroy_from_kernel(mach_msg_header_t *msg);
++
+ #define MACH_MSG_NULL (mach_msg_header_t *) 0
+ 
+ typedef struct
+diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
+index 0000000..0000000 100644
+--- a/xnu/bsd/kern/decmpfs.c
++++ b/xnu/bsd/kern/decmpfs.c
+@@ -45,6 +45,7 @@
+ #include <libkern/zlib.h>
+ #include <kern/kalloc.h>
++#include <IOKit/IOLib.h>
+ #include <libkern/OSByteOrder.h>

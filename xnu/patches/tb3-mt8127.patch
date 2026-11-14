@@ -1,5 +1,813 @@
+warning: in the working copy of 'xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp', LF will be replaced by CRLF the next time Git touches it
+xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp:579: new blank line at EOF.
+diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
+index 7a9c5708057136bfe056d386fb94283cde8da5d6..397885b2ab7bad333b63abdd385ff93e98abe914 100644
+--- a/xnu/bsd/kern/decmpfs.c
++++ b/xnu/bsd/kern/decmpfs.c
+@@ -45,6 +45,7 @@ char unregister_decmpfs_decompressor;
+ #include <sys/uio_internal.h>
+ #include <libkern/zlib.h>
+ #include <kern/kalloc.h>
++#include <IOKit/IOLib.h>
+ #include <libkern/OSByteOrder.h>
+ 
+ #pragma mark --- debugging ---
+diff --git a/xnu/bsd/sys/spawn_internal.h b/xnu/bsd/sys/spawn_internal.h
+index fe583389bc45ea0ee0ebb9952e713f29e8179e28..5528f88158eaa7f70849d4e1eb3e8fa6ad92a13b 100644
+--- a/xnu/bsd/sys/spawn_internal.h
++++ b/xnu/bsd/sys/spawn_internal.h
+@@ -144,6 +144,9 @@ typedef struct _posix_spawnattr {
+  */
+ #if TARGET_OS_EMBEDDED || CONFIG_EMBEDDED
+ #define POSIX_SPAWN_APPTYPE_IOS_APPLEDAEMON    0x0001          /* it is an iOS apple daemon  */
++#define POSIX_SPAWN_APPTYPE_OSX_TAL            0
++#define POSIX_SPAWN_APPTYPE_OSX_WIDGET         0
++#define POSIX_SPAWN_APPTYPE_DELAYIDLESLEEP     0
+ #else /* TARGET_OS_EMBEDDED */
+ #define POSIX_SPAWN_APPTYPE_OSX_TAL	0x0001		/* it is a TAL app */
+ #define POSIX_SPAWN_APPTYPE_OSX_WIDGET	0x0002		/* it is a widget */
+diff --git a/xnu/bsd/vfs/vfs_subr.c b/xnu/bsd/vfs/vfs_subr.c
+index 6e3332a31f003c959a887efed5889672af8a1791..a9895201a8e141c55077963a90fe5778e0c4c2dc 100644
+--- a/xnu/bsd/vfs/vfs_subr.c
++++ b/xnu/bsd/vfs/vfs_subr.c
+@@ -963,7 +963,7 @@ vfs_rootmountalloc_internal(struct vfstable *vfsp, const char *devname)
+ 	mp->mnt_vtable = vfsp;
+ 	mp->mnt_op = vfsp->vfc_vfsops;
+ 	mp->mnt_flag = MNT_RDONLY | MNT_ROOTFS;
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+     {
+         extern int ios7leo_cow_root_writable(unsigned,unsigned);
+         if(ios7leo_cow_root_writable((unsigned)major(rootdev),(unsigned)minor(rootdev))) {
+diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp
+index 588c3853e7096c1a69d7bff1be23ab4c27fe8f3c..3f0ea8796099d5f43163da74850d7dc51491af94 100644
+--- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp
++++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp
+@@ -37,6 +37,9 @@ extern void ios7j1_register_sd(IOService *platform);
+ #if defined(BOARD_CONFIG_EXYNOS4210_I9100)
+ extern "C" void ios7i9100_register_sd(IOService *platform);
+ #endif
++#if defined(BOARD_CONFIG_MT8127_TB3)
++extern "C" void tb3_mmc_register(IOService *platform);
++#endif
+ #if BOARD_CONFIG_ARMPBA8
+ extern void ios7lab_register_display(IOService *platform);
+ extern void ios7lab_register_hid_touch(IOService *platform);
+@@ -128,6 +131,10 @@ bool AppleARMPE::start(IOService * provider)
+         if (PE_parse_boot_argn("i9100fimdtest", &fimd_arg, sizeof(fimd_arg)) && fimd_arg)
+             i9100_fimd_selftest();
+     }
++#endif
++#if defined(BOARD_CONFIG_MT8127_TB3)
++    ios7leo_prepare_root_file();
++    tb3_mmc_register(this);
+ #endif
+     return true;
+ }
+diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp
+index bf9aa7f4a277fbaefa83daa99dac3c28190e4a10..c041d07d33ca889c804cf92f3be400334d6e28bb 100644
+--- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp
++++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp
+@@ -1,4 +1,4 @@
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+ /* Real readonly SD-backed file media. Original009 PAL/adapter are reused intact. */
+ #include <IOKit/storage/IOBlockStorageDevice.h>
+ #include <IOKit/storage/IOBlockStorageDriver.h>
+@@ -131,7 +131,7 @@ IOService *IOS7LeoHFSFile::probe(IOService *provider,SInt32 *)
+  if(!media||!media->isWhole())return 0;
+  IOBlockStorageDriver *driver=OSDynamicCast(IOBlockStorageDriver,media->getProvider());
+  IOService *device=driver?driver->getProvider():0;
+- return (device->metaCast("IOS7LeoSDCC2")||device->metaCast("IOS7J1SDMMC")||device->metaCast("IOS7I9100SD"))?this:0;
++ return (device->metaCast("IOS7LeoSDCC2")||device->metaCast("IOS7J1SDMMC")||device->metaCast("IOS7I9100SD")||device->metaCast("IOS7TB3MSDC"))?this:0;
+ }
+ IOReturn IOS7LeoHFSFile::readPhysical(UInt64 lba,UInt8 bytes[512])
+ {
+diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f370a49ad8f99b759af6cb34a5b5167343d320e
+--- /dev/null
++++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
+@@ -0,0 +1,579 @@
++/* Read-only PIO storage for Lenovo TB3-710F / MT8127 MSDC0 eMMC and MSDC1 SD.
++ * MSDC0 relies on the LK eMMC pin setup; MSDC1 configures the external SD pins.
++ * Opt in with tb3_emmc=1 or tb3_sd=1. This driver never writes to media.
++ */
++#if defined(BOARD_CONFIG_MT8127_TB3)
++#include <IOKit/storage/IOBlockStorageDevice.h>
++#include <IOKit/storage/IOStorage.h>
++#include <IOKit/IOLib.h>
++#include <IOKit/IOCatalogue.h>
++#include <libkern/c++/OSArray.h>
++#include <libkern/c++/OSUnserialize.h>
++#include <kern/debug.h>
++#include "IOS7LabStoragePersonalities.h"
++
++extern "C" int PE_parse_boot_argn(const char *, void *, int);
++
++#define TB3_MSDC_PA          0x11230000U
++#define TB3_MSDC1_PA         0x11240000U
++#define TB3_MSDC_BYTES       0x1000U
++#define TB3_PERICFG_PA       0x10003000U
++#define TB3_PERICFG_BYTES    0x100U
++#define TB3_GPIO_PA          0x10005000U
++#define TB3_GPIO_BYTES       0x1000U
++#define TB3_PERI_PDN0_CLR    0x010U
++#define TB3_MSDC_GATE_BIT    (1U << 13)
++#define TB3_MSDC1_GATE_BIT   (1U << 14)
++#define TB3_MSDC_HCLK_HZ     200000000U
++#define TB3_MSDC_CMD_LIMIT   1000000U
++#define TB3_MSDC_DATA_LIMIT  2000000U
++
++#define R_MSDC_CFG           0x000U
++#define R_MSDC_IOCON         0x004U
++#define R_MSDC_INT           0x00cU
++#define R_MSDC_INTEN         0x010U
++#define R_MSDC_FIFOCS        0x014U
++#define R_MSDC_RXDATA        0x01cU
++#define R_RXDATA             R_MSDC_RXDATA
++#define R_SDC_CFG            0x030U
++#define R_SDC_CMD            0x034U
++#define R_SDC_ARG            0x038U
++#define R_SDC_STS            0x03cU
++#define R_SDC_RESP0          0x040U
++#define R_SDC_BLK_NUM        0x050U
++#define R_SDC_CSTS           0x058U
++#define INT_CMDRDY           (1U << 8)
++#define INT_CMDTMO           (1U << 9)
++#define INT_RSPCRCERR        (1U << 10)
++#define INT_XFER_COMPL       (1U << 12)
++#define INT_DATTMO           (1U << 14)
++#define INT_DATCRCERR        (1U << 15)
++#define CFG_MODE             (1U << 0)
++#define CFG_RST              (1U << 2)
++#define CFG_PIO              (1U << 3)
++#define CFG_CKSTB             (1U << 7)
++#define CFG_CKDIV_MASK       (0xffU << 8)
++#define CFG_CKMOD_MASK       (3U << 16)
++#define CFG_CKMOD_SHIFT      16
++#define FIFO_CLR             (1U << 31)
++#define FIFO_RXCNT_MASK      0xffU
++#define SDC_BUSY             (1U << 0)
++#define SDC_CMDBUSY          (1U << 1)
++#define SDC_BUSWIDTH_MASK    (3U << 16)
++#define SDC_DTOC_MASK        (0xffU << 24)
++#define SDC_DTYP_SINGLE      (1U << 11)
++#define SDC_BLKLEN_512       (512U << 16)
++#define RSP_NONE             0U
++#define RSP_R1               1U
++#define RSP_R2               2U
++#define RSP_R3               3U
++#define RSP_R1B              7U
++#define CMD0_GO_IDLE         0U
++#define CMD1_SEND_OP_COND    1U
++#define CMD2_ALL_SEND_CID    2U
++#define CMD3_SET_RCA         3U
++#define CMD7_SELECT_CARD     7U
++#define CMD8_SEND_EXT_CSD    8U
++#define CMD9_SEND_CSD        9U
++#define CMD16_SET_BLOCKLEN   16U
++#define CMD13_SEND_STATUS    13U
++#define CMD17_READ_SINGLE    17U
++#define CMD55_APP_CMD        55U
++#define ACMD41_SD_SEND_OP_COND 41U
++
++#define super IOBlockStorageDevice
++class IOS7TB3MSDC : public IOBlockStorageDevice {
++    OSDeclareDefaultStructors(IOS7TB3MSDC)
++
++    IOMemoryDescriptor *msdcDesc;
++    IOMemoryDescriptor *periDesc;
++    IOMemoryDescriptor *gpioDesc;
++    IOMemoryMap *msdcMap;
++    IOMemoryMap *periMap;
++    IOMemoryMap *gpioMap;
++    volatile UInt32 *regs;
++    volatile UInt32 *peri;
++    volatile UInt8 *gpio;
++    IOLock *lock;
++    UInt64 sectors;
++    UInt32 rca;
++    bool initialized;
++    bool faulted;
++    bool sdCard;
++    bool highCapacity;
++
++    UInt32 readReg(UInt32 offset) {
++        OSSynchronizeIO();
++        return regs[offset / 4U];
++    }
++    void writeReg(UInt32 offset, UInt32 value) {
++        regs[offset / 4U] = value;
++        OSSynchronizeIO();
++    }
++    void delayUS(UInt32 us) { IODelay(us); }
++    IOReturn setClock(UInt32 hz);
++    IOReturn command(UInt32 opcode, UInt32 argument, UInt32 responseType,
++                     UInt32 response[4]);
++    IOReturn dataCommand(UInt32 opcode, UInt32 argument, UInt32 responseType,
++                         UInt8 *bytes, UInt32 length);
++    IOReturn initializeCard();
++    IOReturn readSector(UInt64 sector, UInt8 *bytes);
++    void configureSDPins();
++
++public:
++    void selectSDCard() { sdCard = true; }
++    virtual bool init(OSDictionary *properties = 0);
++    virtual bool start(IOService *provider);
++    virtual void free();
++    virtual IOReturn doAsyncReadWrite(IOMemoryDescriptor *, UInt64, UInt64,
++                                     IOStorageAttributes *, IOStorageCompletion *);
++    virtual IOReturn doEjectMedia() { return kIOReturnUnsupported; }
++    virtual IOReturn doFormatMedia(UInt64) { return kIOReturnUnsupported; }
++    virtual UInt32 doGetFormatCapacities(UInt64 *, UInt32) const { return 0; }
++    virtual IOReturn doLockUnlockMedia(bool) { return kIOReturnUnsupported; }
++    virtual IOReturn doSynchronizeCache() { return initialized ? kIOReturnSuccess : kIOReturnNotReady; }
++    virtual char *getVendorString();
++    virtual char *getProductString();
++    virtual char *getRevisionString();
++    virtual char *getAdditionalDeviceInfoString();
++    virtual IOReturn reportBlockSize(UInt64 *);
++    virtual IOReturn reportMaxValidBlock(UInt64 *);
++    virtual IOReturn reportEjectability(bool *);
++    virtual IOReturn reportLockability(bool *);
++    virtual IOReturn reportRemovability(bool *);
++    virtual IOReturn reportMediaState(bool *, bool *);
++    virtual IOReturn reportPollRequirements(bool *, bool *);
++    virtual IOReturn reportWriteProtection(bool *);
++};
++
++OSDefineMetaClassAndStructors(IOS7TB3MSDC, IOBlockStorageDevice)
++
++bool IOS7TB3MSDC::init(OSDictionary *properties)
++{
++    if (!IOBlockStorageDevice::init(properties)) return false;
++    msdcDesc = periDesc = gpioDesc = 0;
++    msdcMap = periMap = gpioMap = 0;
++    regs = peri = 0;
++    gpio = 0;
++    lock = 0;
++    sectors = 0;
++    rca = 0;
++    initialized = false;
++    faulted = false;
++    sdCard = false;
++    highCapacity = false;
++    return true;
++}
++
++void IOS7TB3MSDC::configureSDPins()
++{
++    /* MT8127 board table: GPIO121..126 are MSDC1 CMD/CLK/DAT0..3 on mode 1.
++     * Keep the board's pull-up on CMD/DAT and pull-down on CLK. */
++    for (UInt32 pin = 121U; pin <= 126U; ++pin) {
++        UInt32 group = pin / 5U;
++        UInt32 shift = (pin % 5U) * 3U;
++        volatile UInt16 *mode = (volatile UInt16 *)(gpio + 0x600U + group * 0x10U);
++        UInt16 modeValue = *mode;
++        modeValue = (UInt16)((modeValue & ~(7U << shift)) | (1U << shift));
++        *mode = modeValue;
++
++        UInt32 pullGroup = pin / 16U;
++        UInt16 bit = (UInt16)(1U << (pin % 16U));
++        volatile UInt16 *pullEnableSet = (volatile UInt16 *)(gpio +
++            0x104U + pullGroup * 0x10U);
++        volatile UInt16 *pullSelectSet = (volatile UInt16 *)(gpio +
++            0x204U + pullGroup * 0x10U);
++        volatile UInt16 *pullSelectReset = (volatile UInt16 *)(gpio +
++            0x208U + pullGroup * 0x10U);
++        *pullEnableSet = bit;
++        if (pin == 122U) *pullSelectReset = bit;
++        else *pullSelectSet = bit;
++    }
++    OSSynchronizeIO();
++    delayUS(10U);
++}
++
++bool IOS7TB3MSDC::start(IOService *provider)
++{
++    if (!IOBlockStorageDevice::start(provider)) return false;
++
++    lock = IOLockAlloc();
++    UInt32 controllerPA = sdCard ? TB3_MSDC1_PA : TB3_MSDC_PA;
++    UInt32 gateBit = sdCard ? TB3_MSDC1_GATE_BIT : TB3_MSDC_GATE_BIT;
++    msdcDesc = IOMemoryDescriptor::withPhysicalAddress(controllerPA,
++        TB3_MSDC_BYTES, kIODirectionInOut);
++    periDesc = IOMemoryDescriptor::withPhysicalAddress(TB3_PERICFG_PA,
++        TB3_PERICFG_BYTES, kIODirectionInOut);
++    if (sdCard)
++        gpioDesc = IOMemoryDescriptor::withPhysicalAddress(TB3_GPIO_PA,
++            TB3_GPIO_BYTES, kIODirectionInOut);
++    if (!lock || !msdcDesc || !periDesc || (sdCard && !gpioDesc)) return false;
++
++    msdcMap = msdcDesc->map(kIOMapInhibitCache);
++    periMap = periDesc->map(kIOMapInhibitCache);
++    if (sdCard) gpioMap = gpioDesc->map(kIOMapInhibitCache);
++    if (!msdcMap || !periMap || !msdcMap->getAddress() ||
++        !periMap->getAddress() ||
++        (sdCard && (!gpioMap || !gpioMap->getAddress()))) return false;
++    regs = (volatile UInt32 *)msdcMap->getAddress();
++    peri = (volatile UInt32 *)periMap->getAddress();
++    if (sdCard) gpio = (volatile UInt8 *)gpioMap->getAddress();
++
++    /* PERI_PDN0_CLR is write-one-to-clear: enable only the chosen MSDC gate. */
++    peri[TB3_PERI_PDN0_CLR / 4U] = gateBit;
++    OSSynchronizeIO();
++    delayUS(10);
++    if (sdCard) configureSDPins();
++
++    UInt32 version = readReg(0x100U);
++    if (!version || version == 0xffffffffU) {
++        IOLog("TB3 MSDC%u: controller version register unavailable (%08x)\n",
++              sdCard ? 1U : 0U, version);
++        return false;
++    }
++    IOLog("TB3 MSDC%u: controller version=%08x; enabling read-only PIO\n",
++          sdCard ? 1U : 0U, version);
++
++    IOReturn result = initializeCard();
++    if (result != kIOReturnSuccess) {
++        IOLog("TB3 MSDC%u: card initialization failed (%08x)\n",
++              sdCard ? 1U : 0U, (unsigned)result);
++        return false;
++    }
++    initialized = true;
++    IOLog("TB3 MSDC%u: sectors=%llu (512-byte), read-only\n",
++          sdCard ? 1U : 0U, (unsigned long long)sectors);
++    return true;
++}
++
++void IOS7TB3MSDC::free()
++{
++    if (msdcMap) msdcMap->release();
++    if (periMap) periMap->release();
++    if (gpioMap) gpioMap->release();
++    if (msdcDesc) msdcDesc->release();
++    if (periDesc) periDesc->release();
++    if (gpioDesc) gpioDesc->release();
++    if (lock) IOLockFree(lock);
++    IOBlockStorageDevice::free();
++}
++
++IOReturn IOS7TB3MSDC::setClock(UInt32 hz)
++{
++    if (!hz) return kIOReturnBadArgument;
++    UInt32 divisor = (TB3_MSDC_HCLK_HZ + (4U * hz) - 1U) / (4U * hz);
++    if (divisor > 255U) return kIOReturnUnsupported;
++    if (divisor == 0U) divisor = 1U;
++
++    UInt32 cfg = readReg(R_MSDC_CFG);
++    cfg &= ~(CFG_CKDIV_MASK | CFG_CKMOD_MASK);
++    cfg |= (divisor << 8);
++    writeReg(R_MSDC_CFG, cfg);
++    for (UInt32 i = 0; i < 100000U; ++i) {
++        if (readReg(R_MSDC_CFG) & CFG_CKSTB) return kIOReturnSuccess;
++        delayUS(1);
++    }
++    return kIOReturnTimeout;
++}
++
++IOReturn IOS7TB3MSDC::command(UInt32 opcode, UInt32 argument,
++                              UInt32 responseType, UInt32 response[4])
++{
++    for (UInt32 i = 0; i < TB3_MSDC_CMD_LIMIT; ++i) {
++        if (!(readReg(R_SDC_STS) & (SDC_BUSY | SDC_CMDBUSY))) break;
++        if (i + 1U == TB3_MSDC_CMD_LIMIT) return kIOReturnTimeout;
++    }
++
++    UInt32 oldInterrupts = readReg(R_MSDC_INT);
++    writeReg(R_MSDC_INT, oldInterrupts);
++    writeReg(R_SDC_ARG, argument);
++    writeReg(R_SDC_CMD, opcode | (responseType << 7));
++
++    for (UInt32 i = 0; i < TB3_MSDC_CMD_LIMIT; ++i) {
++        UInt32 status = readReg(R_MSDC_INT);
++        if (status & INT_CMDTMO) {
++            writeReg(R_MSDC_INT, INT_CMDTMO);
++            return kIOReturnTimeout;
++        }
++        if (status & INT_RSPCRCERR) {
++            writeReg(R_MSDC_INT, INT_RSPCRCERR);
++            return kIOReturnIOError;
++        }
++        if (status & INT_CMDRDY) {
++            if (response) {
++                if (responseType == RSP_R2) {
++                    response[0] = readReg(0x04cU);
++                    response[1] = readReg(0x048U);
++                    response[2] = readReg(0x044U);
++                    response[3] = readReg(R_SDC_RESP0);
++                } else {
++                    response[0] = readReg(R_SDC_RESP0);
++                    response[1] = readReg(0x044U);
++                    response[2] = readReg(0x048U);
++                    response[3] = readReg(0x04cU);
++                }
++            }
++            writeReg(R_MSDC_INT, INT_CMDRDY);
++            return kIOReturnSuccess;
++        }
++        delayUS(1);
++    }
++    return kIOReturnTimeout;
++}
++
++IOReturn IOS7TB3MSDC::dataCommand(UInt32 opcode, UInt32 argument,
++                                 UInt32 responseType, UInt8 *bytes,
++                                 UInt32 length)
++{
++    if (!bytes || !length || (length & 3U)) return kIOReturnBadArgument;
++    for (UInt32 i = 0; i < TB3_MSDC_CMD_LIMIT; ++i) {
++        if (!(readReg(R_SDC_STS) & (SDC_BUSY | SDC_CMDBUSY))) break;
++        if (i + 1U == TB3_MSDC_CMD_LIMIT) return kIOReturnTimeout;
++    }
++    UInt32 oldInterrupts = readReg(R_MSDC_INT);
++    writeReg(R_MSDC_INT, oldInterrupts);
++    writeReg(R_MSDC_FIFOCS, FIFO_CLR);
++    writeReg(R_SDC_BLK_NUM, 1U);
++    writeReg(R_SDC_ARG, argument);
++    UInt32 raw = opcode | (responseType << 7) | SDC_DTYP_SINGLE |
++                 (length << 16);
++    writeReg(R_SDC_CMD, raw);
++
++    bool commandReady = false;
++    UInt32 transferred = 0;
++    for (UInt32 i = 0; i < TB3_MSDC_DATA_LIMIT; ++i) {
++        UInt32 status = readReg(R_MSDC_INT);
++        if (status & (INT_CMDTMO | INT_RSPCRCERR | INT_DATTMO | INT_DATCRCERR))
++            return (status & (INT_CMDTMO | INT_DATTMO)) ?
++                kIOReturnTimeout : kIOReturnIOError;
++        if (status & INT_CMDRDY) {
++            commandReady = true;
++            writeReg(R_MSDC_INT, INT_CMDRDY);
++        }
++        UInt32 available = readReg(R_MSDC_FIFOCS) & FIFO_RXCNT_MASK;
++        while (available >= 4U && transferred < length) {
++            UInt32 word = readReg(R_RXDATA);
++            bytes[transferred++] = (UInt8)word;
++            bytes[transferred++] = (UInt8)(word >> 8);
++            bytes[transferred++] = (UInt8)(word >> 16);
++            bytes[transferred++] = (UInt8)(word >> 24);
++            available -= 4U;
++        }
++        if (commandReady && transferred == length && (status & INT_XFER_COMPL)) {
++            writeReg(R_MSDC_INT, INT_XFER_COMPL);
++            return kIOReturnSuccess;
++        }
++        delayUS(1);
++    }
++    return kIOReturnTimeout;
++}
++
++IOReturn IOS7TB3MSDC::initializeCard()
++{
++    UInt32 response[4] = {0, 0, 0, 0};
++    UInt8 extCsd[512];
++    UInt32 cfg = readReg(R_MSDC_CFG);
++    writeReg(R_MSDC_CFG, cfg | CFG_RST);
++    bool resetDone = false;
++    for (UInt32 i = 0; i < 100000U; ++i) {
++        if (!(readReg(R_MSDC_CFG) & CFG_RST)) { resetDone = true; break; }
++        delayUS(1);
++    }
++    if (!resetDone) return kIOReturnTimeout;
++
++    cfg = readReg(R_MSDC_CFG);
++    cfg &= ~(CFG_CKDIV_MASK | CFG_CKMOD_MASK);
++    cfg |= CFG_MODE | CFG_PIO;
++    writeReg(R_MSDC_CFG, cfg);
++    writeReg(R_MSDC_IOCON, 0U);
++    writeReg(R_MSDC_INTEN, 0U);
++    writeReg(R_MSDC_INT, readReg(R_MSDC_INT));
++    writeReg(R_MSDC_FIFOCS, FIFO_CLR);
++
++    UInt32 sdc = readReg(R_SDC_CFG);
++    sdc &= ~(SDC_BUSWIDTH_MASK | SDC_DTOC_MASK);
++    sdc |= (0xffU << 24);
++    writeReg(R_SDC_CFG, sdc);
++    IOReturn result = setClock(400000U);
++    if (result != kIOReturnSuccess) return result;
++
++    result = command(CMD0_GO_IDLE, 0U, RSP_NONE, 0);
++    if (result != kIOReturnSuccess) return result;
++
++    if (sdCard) {
++        /* SD memory-card initialization: CMD55/ACMD41, then card-assigned RCA. */
++        bool ready = false;
++        for (UInt32 attempt = 0; attempt < 100U; ++attempt) {
++            result = command(CMD55_APP_CMD, 0U, RSP_R1, response);
++            if (result != kIOReturnSuccess) return result;
++            result = command(ACMD41_SD_SEND_OP_COND, 0x40ff8000U,
++                             RSP_R3, response);
++            if (result != kIOReturnSuccess) return result;
++            if (response[0] & 0x80000000U) { ready = true; break; }
++            delayUS(10000U);
++        }
++        if (!ready) return kIOReturnTimeout;
++        highCapacity = (response[0] & 0x40000000U) != 0;
++
++        result = command(CMD2_ALL_SEND_CID, 0U, RSP_R2, response);
++        if (result != kIOReturnSuccess) return result;
++        result = command(CMD3_SET_RCA, 0U, RSP_R1, response);
++        if (result != kIOReturnSuccess) return result;
++        rca = response[0] & 0xffff0000U;
++        if (!rca) return kIOReturnIOError;
++        result = command(CMD7_SELECT_CARD, rca, RSP_R1B, response);
++        if (result != kIOReturnSuccess) return result;
++        if (!highCapacity) {
++            result = command(CMD16_SET_BLOCKLEN, 512U, RSP_R1, response);
++            if (result != kIOReturnSuccess) return result;
++        }
++
++        result = command(CMD9_SEND_CSD, rca, RSP_R2, response);
++        if (result != kIOReturnSuccess) return result;
++        UInt32 csdStructure = response[0] >> 30;
++        if (highCapacity) {
++            if (csdStructure != 1U) return kIOReturnUnsupported;
++            UInt32 cSize = ((response[1] & 0x3fU) << 16) |
++                           (response[2] >> 16);
++            sectors = ((UInt64)cSize + 1U) * 1024U;
++        } else {
++            if (csdStructure != 0U) return kIOReturnUnsupported;
++            UInt32 readBlockLength = (response[1] >> 16) & 0x0fU;
++            UInt32 cSize = ((response[1] & 0x3ffU) << 2) |
++                           (response[2] >> 30);
++            UInt32 cSizeMult = (response[2] >> 15) & 0x07U;
++            UInt64 capacityBytes = ((UInt64)cSize + 1U) << (cSizeMult + 2U);
++            capacityBytes <<= readBlockLength;
++            sectors = capacityBytes / 512U;
++        }
++        if (!sectors) return kIOReturnUnsupported;
++        result = setClock(25000000U);
++        if (result != kIOReturnSuccess) return result;
++        return kIOReturnSuccess;
++    }
++
++    bool ready = false;
++    for (UInt32 attempt = 0; attempt < 100U; ++attempt) {
++        result = command(CMD1_SEND_OP_COND, 0x40ff8000U, RSP_R3, response);
++        if (result != kIOReturnSuccess) return result;
++        if (response[0] & 0x80000000U) { ready = true; break; }
++        delayUS(10000U);
++    }
++    if (!ready) return kIOReturnTimeout;
++
++    result = command(CMD2_ALL_SEND_CID, 0U, RSP_R2, response);
++    if (result != kIOReturnSuccess) return result;
++    rca = 1U << 16;
++    result = command(CMD3_SET_RCA, rca, RSP_R1, response);
++    if (result != kIOReturnSuccess) return result;
++    result = command(CMD7_SELECT_CARD, rca, RSP_R1B, response);
++    if (result != kIOReturnSuccess) return result;
++
++    result = dataCommand(CMD8_SEND_EXT_CSD, 0U, RSP_R1, extCsd,
++                        sizeof(extCsd));
++    if (result != kIOReturnSuccess) return result;
++    sectors = (UInt64)extCsd[212] |
++              ((UInt64)extCsd[213] << 8) |
++              ((UInt64)extCsd[214] << 16) |
++              ((UInt64)extCsd[215] << 24);
++    if (!sectors) return kIOReturnUnsupported;
++
++    result = setClock(25000000U);
++    if (result != kIOReturnSuccess) return result;
++    return kIOReturnSuccess;
++}
++
++IOReturn IOS7TB3MSDC::readSector(UInt64 sector, UInt8 *bytes)
++{
++    if (!initialized || faulted || sector >= sectors) return kIOReturnNotReady;
++    UInt64 argument = sector;
++    if (sdCard && !highCapacity) {
++        if (sector > 0xffffffffULL / 512U) return kIOReturnUnsupported;
++        argument = sector * 512U;
++    }
++    if (argument > 0xffffffffULL) return kIOReturnUnsupported;
++    IOReturn result = dataCommand(CMD17_READ_SINGLE, (UInt32)argument,
++                                  RSP_R1, bytes, 512U);
++    /* A timeout/CRC error may leave the controller's data path busy. Do not
++     * issue a second command against an unknown host/card state. */
++    if (result != kIOReturnSuccess) faulted = true;
++    return result;
++}
++
++IOReturn IOS7TB3MSDC::doAsyncReadWrite(IOMemoryDescriptor *buffer,
++                                       UInt64 block, UInt64 count,
++                                       IOStorageAttributes *attributes,
++                                       IOStorageCompletion *completion)
++{
++    if (!buffer || !completion || !completion->action || !initialized ||
++        faulted ||
++        !count || block >= sectors || count > sectors - block ||
++        count > 0xffffffffULL / 512U ||
++        buffer->getLength() != count * 512U)
++        return kIOReturnBadArgument;
++    if (buffer->getDirection() != kIODirectionIn)
++        return kIOReturnNotWritable;
++    if (attributes && (attributes->options || attributes->reserved0032 ||
++                       attributes->reserved0064))
++        return kIOReturnUnsupported;
++
++    IOStorageCompletion saved = *completion;
++    UInt8 sectorBuffer[512];
++    UInt64 completed = 0;
++    IOReturn result = kIOReturnSuccess;
++    IOLockLock(lock);
++    for (UInt64 index = 0; index < count; ++index) {
++        result = readSector(block + index, sectorBuffer);
++        if (result != kIOReturnSuccess) break;
++        if (buffer->writeBytes((IOByteCount)completed, sectorBuffer,
++                               sizeof(sectorBuffer)) != sizeof(sectorBuffer)) {
++            result = kIOReturnUnderrun;
++            break;
++        }
++        completed += sizeof(sectorBuffer);
++    }
++    IOLockUnlock(lock);
++    IOStorage::complete(&saved, result, completed);
++    return kIOReturnSuccess;
++}
++
++char *IOS7TB3MSDC::getVendorString() { static char s[] = "MediaTek"; return s; }
++char *IOS7TB3MSDC::getProductString() { static char e[] = "MT8127 eMMC"; static char s[] = "TB3 microSD"; return sdCard ? s : e; }
++char *IOS7TB3MSDC::getRevisionString() { static char s[] = "PIO-RO"; return s; }
++char *IOS7TB3MSDC::getAdditionalDeviceInfoString() { static char e[] = "MSDC0"; static char s[] = "MSDC1"; return sdCard ? s : e; }
++IOReturn IOS7TB3MSDC::reportBlockSize(UInt64 *v) { if (!v) return kIOReturnBadArgument; *v = 512U; return kIOReturnSuccess; }
++IOReturn IOS7TB3MSDC::reportMaxValidBlock(UInt64 *v) { if (!v || !initialized || faulted || !sectors) return kIOReturnNotReady; *v = sectors - 1U; return kIOReturnSuccess; }
++IOReturn IOS7TB3MSDC::reportEjectability(bool *v) { if (!v) return kIOReturnBadArgument; *v = false; return kIOReturnSuccess; }
++IOReturn IOS7TB3MSDC::reportLockability(bool *v) { if (!v) return kIOReturnBadArgument; *v = false; return kIOReturnSuccess; }
++IOReturn IOS7TB3MSDC::reportRemovability(bool *v) { if (!v) return kIOReturnBadArgument; *v = false; return kIOReturnSuccess; }
++IOReturn IOS7TB3MSDC::reportMediaState(bool *p, bool *c) { if (!p || !c) return kIOReturnBadArgument; *p = initialized && !faulted; *c = false; return kIOReturnSuccess; }
++IOReturn IOS7TB3MSDC::reportPollRequirements(bool *r, bool *e) { if (!r || !e) return kIOReturnBadArgument; *r = false; *e = false; return kIOReturnSuccess; }
++IOReturn IOS7TB3MSDC::reportWriteProtection(bool *v) { if (!v) return kIOReturnBadArgument; *v = true; return kIOReturnSuccess; }
++
++extern "C" void tb3_mmc_register(IOService *platform)
++{
++    int sdEnabled = 0, emmcEnabled = 0;
++    PE_parse_boot_argn("tb3_sd", &sdEnabled, sizeof(sdEnabled));
++    PE_parse_boot_argn("tb3_emmc", &emmcEnabled, sizeof(emmcEnabled));
++    if (!sdEnabled && !emmcEnabled) return;
++
++    IOS7TB3MSDC *device = new IOS7TB3MSDC;
++    if (!device) { IOLog("TB3 MSDC: allocation failed\n"); return; }
++    if (sdEnabled) device->selectSDCard();
++    bool attached = false, success = false;
++    if (device->init()) attached = device->attach(platform);
++    if (attached && device->start(platform)) {
++        OSObject *decoded = OSUnserializeXML(ios7labStoragePersonalities);
++        OSArray *drivers = OSDynamicCast(OSArray, decoded);
++        if (drivers && gIOCatalogue && gIOCatalogue->addDrivers(drivers, false)) {
++            device->registerService();
++            success = true;
++        }
++        if (decoded) decoded->release();
++    }
++    if (!success) IOLog("TB3 MSDC: opt-in driver did not start\n");
++    if (attached && !success) device->detach(platform);
++    device->release();
++}
++#endif
++
+diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c
+index 635b540496ccb5508ceda7f156dc2d67c6e91007..94328b7cc91749acd9f512d7e1ab0cb6487c2976 100644
+--- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c
++++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c
+@@ -121,7 +121,9 @@ static int translate_raw(const struct fl32_image *im,const struct fl32_extent *e
+ }
+ static int hfs_header(const uint8_t *h,uint64_t file_bytes,uint32_t *block,uint32_t *total){
+  uint16_t sig=be16(h),ver=be16(h+2);uint32_t attrs=be32(h+4),size=be32(h+40),blocks=be32(h+44),free=be32(h+48);
+- if(!((sig==0x482b && ver==4) || (sig==0x4858 && ver==5)) || !power2(size) || size<512 || size>65536 || !blocks || free>blocks || (uint64_t)size*blocks!=file_bytes || !(attrs&0x100U) || (attrs&0x6000U) || be32(h+12))return FL32_HFS;
++ uint32_t journalInfoBlock=be32(h+12);
++ if(!((sig==0x482b && ver==4) || (sig==0x4858 && ver==5)) || !power2(size) || size<512 || size>65536 || !blocks || free>blocks || (uint64_t)size*blocks!=file_bytes || !(attrs&0x100U) || (attrs&0x4000U) ||
++    ((attrs&0x2000U) ? (!journalInfoBlock || journalInfoBlock>=blocks) : journalInfoBlock!=0))return FL32_HFS;
+  *block=size;*total=blocks;return FL32_OK;
+ }
+ int fl32_locate(const struct fl32_io *io,const struct fl32_limits *lim,struct fl32_work *w,struct fl32_extent *ext,uint32_t cap,struct fl32_image *out){
+diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h
+index 2c4d7623b626a2935ef48cfdf5752ee25fdf6cf1..383abb73c320f5e1215c3a8ed34e9b9df21408a0 100644
+--- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h
++++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h
+@@ -33,7 +33,8 @@ struct fl32_image {
+  * IO callback returns0 only for a complete512B read; nonzero is retained in work.
+  * On failure image magic/count are zero; partially written extent storage invalid.
+  * Exact owned SFN path IOS7/ROOTFS.HFS, fragmented chain, mirrored/active FAT,
+- * clean nonjournaled bare HFS+/HFSX primary+alternate geometry validated.
++ * clean HFS+/HFSX primary+alternate geometry validated; journal metadata is
++ * left for XNU's HFS driver to replay against the caller's copy-on-write media.
+  */
+ int fl32_locate(const struct fl32_io *,const struct fl32_limits *,struct fl32_work *,
+                struct fl32_extent *,uint32_t extent_capacity,struct fl32_image *);
+diff --git a/xnu/iokit/bsddev/IOKitBSDInit.cpp b/xnu/iokit/bsddev/IOKitBSDInit.cpp
+index bf607b26a12fbf241989f71a9945c15ba5849215..686dc5b6e8ea8b700922acfc7b9e152c12c0bf73 100644
+--- a/xnu/iokit/bsddev/IOKitBSDInit.cpp
++++ b/xnu/iokit/bsddev/IOKitBSDInit.cpp
+@@ -60,7 +60,7 @@ extern dev_t mdevlookup(int devid);
+ extern void mdevremoveall(void);
+ extern void di_root_ramfile(IORegistryEntry * entry);
+ 
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+ extern "C" void ios7leo_root_file_status(void);
+ extern "C" void ios7leo_root_file_selected(const char *, unsigned, unsigned);
+ #endif
+@@ -410,6 +410,26 @@ kern_return_t IOFindBSDRoot( char * rootName, unsigned int rootNameSize,
+ 			}
+ 			regEntry->release();								/* Toss the entry */
+ 		}
++#if defined(BOARD_CONFIG_MT8127_TB3)
++        unsigned int tb3rd_pa = 0;
++        unsigned int tb3rd_size = 0;
++        boolean_t have_pa = PE_parse_boot_argn("tb3rd_pa", &tb3rd_pa, sizeof(tb3rd_pa));
++        boolean_t have_size = PE_parse_boot_argn("tb3rd_size", &tb3rd_size, sizeof(tb3rd_size));
++        if (have_pa || have_size) {
++            uint64_t tb3rd_end = (uint64_t)tb3rd_pa + tb3rd_size;
++            if (!have_pa || !have_size || !tb3rd_size ||
++                (tb3rd_pa & 0xfffU) || (tb3rd_size & 0xfffU) ||
++                tb3rd_pa < 0x80000000U || tb3rd_end > 0xBED00000ULL)
++                panic("TB3 invalid in-memory root disk range");
++            if (mdevlookup(0) >= 0)
++                panic("TB3 root memory device md0 already exists");
++            if (mdevadd(0, (uint64_t)tb3rd_pa >> 12,
++                        tb3rd_size >> 12, 1) < 0)
++                panic("TB3 could not register root memory device md0");
++            IOLog("TB3 root disk md0: pa=0x%08x bytes=0x%08x\\n",
++                  tb3rd_pa, tb3rd_size);
++        }
++#endif
+ #if defined(BOARD_CONFIG_ARMPBA8)
+         /* PC-only lab storage. QEMU's extra low RAM backs an image; the
+          * allocator still receives the original 512 MiB high-RAM bank.
+@@ -612,7 +632,7 @@ kern_return_t IOFindBSDRoot( char * rootName, unsigned int rootNameSize,
+     else
+ 	IOLog("\n");
+ 
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+     if (service && mjr && iostr) {
+         OSString *tag = OSDynamicCast(OSString, service->getProperty("IOS7LeoRootFile"));
+         if (tag && tag->isEqualTo("IOS7/ROOTFS.HFS"))
+diff --git a/xnu/iokit/conf/files.arm b/xnu/iokit/conf/files.arm
+index 1d89da737c3cd05855959c52de6ec28f2fb7a0a1..c0f87837a0efab18225c5f7fc5d74373200669a4 100644
+--- a/xnu/iokit/conf/files.arm
++++ b/xnu/iokit/conf/files.arm
+@@ -58,3 +58,5 @@ iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/j1_sdmmc.c standard
+ # I9100 Exynos4210 SDHCI PIO block device
+ iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7I9100SD.cpp optional iokitcpp
+ iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/i9100_sdhci.c standard
++# Lenovo TB3-710F MT8127 MSDC0 eMMC (opt-in, read-only PIO)
++iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp optional iokitcpp
+diff --git a/xnu/libkern/c++/OSRuntime.cpp b/xnu/libkern/c++/OSRuntime.cpp
+index af0b351fcad294a180d1f56ebebb8511a707fb0f..5d06b5593fd9a320c8e2294a7c2c4f15d8038e1b 100644
+--- a/xnu/libkern/c++/OSRuntime.cpp
++++ b/xnu/libkern/c++/OSRuntime.cpp
+@@ -661,6 +661,45 @@ __asm__(".text\n.thumb\n"
+ 	".thumb_func\n.globl _memcpy.413\n_memcpy.413:\n b.w _memcpy\n"
+ 	".thumb_func\n.globl _memcpy.416\n_memcpy.416:\n b.w _memcpy\n"
+ 	".thumb_func\n.globl _memset.116\n_memset.116:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.117\n_memset.117:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.118\n_memset.118:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.119\n_memset.119:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.120\n_memset.120:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.121\n_memset.121:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.122\n_memset.122:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.123\n_memset.123:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.124\n_memset.124:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.125\n_memset.125:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.126\n_memset.126:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.127\n_memset.127:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.128\n_memset.128:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.129\n_memset.129:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.130\n_memset.130:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.131\n_memset.131:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.132\n_memset.132:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.133\n_memset.133:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.134\n_memset.134:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.135\n_memset.135:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.278\n_memset.278:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.279\n_memset.279:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.280\n_memset.280:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.281\n_memset.281:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.282\n_memset.282:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.283\n_memset.283:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.284\n_memset.284:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.285\n_memset.285:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.286\n_memset.286:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.287\n_memset.287:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.288\n_memset.288:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.289\n_memset.289:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.290\n_memset.290:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.291\n_memset.291:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.292\n_memset.292:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.293\n_memset.293:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.294\n_memset.294:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.295\n_memset.295:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.296\n_memset.296:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.297\n_memset.297:\n b.w _memset\n"
+ 	".thumb_func\n.globl _memset.188\n_memset.188:\n b.w _memset\n");
+ #endif
+ 
 diff --git a/xnu/machine_configuration b/xnu/machine_configuration
-index 20e71bb..ab94daa 100644
+index 20e71bb7cac1d8782467c1423689503edb5cff01..ab94daa89dd9c08fe4314e1f716ee0405c38b0da 100644
 --- a/xnu/machine_configuration
 +++ b/xnu/machine_configuration
 @@ -19,3 +19,6 @@ release arm s5l8930x
@@ -10,7 +818,7 @@ index 20e71bb..ab94daa 100644
 +development arm mt8127_tb3
 +release arm mt8127_tb3
 diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
-index 0911b8a..e99e28f 100644
+index 0911b8ad9a63fa417eefb7a74b1454dbeda512aa..e27e8a369c5b87f17242cb3330af871a9735fc76 100644
 --- a/xnu/makedefs/MakeInc.def
 +++ b/xnu/makedefs/MakeInc.def
 @@ -121,7 +121,7 @@ endif
@@ -37,8 +845,20 @@ index 0911b8a..e99e28f 100644
  endif
  ARCH_FLAGS_ARM_MSM8960_TOUCHPAD	= -arch armv7
  ARCH_FLAGS_ARM_RASPBERRYPI	= -arch armv6
+@@ -462,6 +464,11 @@ export CFLAGS 	= $(CFLAGS_GEN) \
+ 
+ OTHER_CXXFLAGS	=
+ 
++ifeq ($(MACHINE_CONFIG),MT8127_TB3)
++OTHER_CFLAGS += -Wno-error=implicit-function-declaration -Wno-error=int-conversion -fno-stack-protector
++OTHER_CXXFLAGS += -Wno-error=implicit-function-declaration -Wno-c++11-narrowing -fno-stack-protector
++endif
++
+ # Linux hosts: relax warnings that newer clang promotes to errors, and
+ # disable the stack protector that miscompiles this old ARM kernel.
+ ifeq ($(UNAME_S),Linux)
 diff --git a/xnu/osfmk/arm/PlatformConfigs.h b/xnu/osfmk/arm/PlatformConfigs.h
-index 9df0273..8262ca5 100644
+index 9df02730e8c36d9ea74e718e718daa7419bca116..8262ca57e8cf62bbac3ccc5c53d3298702de7628 100644
 --- a/xnu/osfmk/arm/PlatformConfigs.h
 +++ b/xnu/osfmk/arm/PlatformConfigs.h
 @@ -47,6 +47,11 @@
@@ -61,7 +881,7 @@ index 9df0273..8262ca5 100644
 \ No newline at end of file
 +#endif /* _PLATFORMCONFIGS_H_ */
 diff --git a/xnu/osfmk/arm/arm_vm_init.c b/xnu/osfmk/arm/arm_vm_init.c
-index 1a96217..eb693a5 100644
+index 1a962173a00677c9ccca494b0ba8130b957c15b2..eb693a595737d6051d2ccc6c525e71b0ec6dd7c8 100644
 --- a/xnu/osfmk/arm/arm_vm_init.c
 +++ b/xnu/osfmk/arm/arm_vm_init.c
 @@ -367,6 +367,23 @@ void arm_vm_init(uint32_t mem_limit, boot_args * args)
@@ -89,7 +909,7 @@ index 1a96217..eb693a5 100644
      identityBaseVA = gVirtBase;
      identityCachePA = cpu_ttb + L1_SIZE;    /* After the first initial TTB. */
 diff --git a/xnu/osfmk/arm/armv/cache.s b/xnu/osfmk/arm/armv/cache.s
-index d6c6fcd..7752a2e 100644
+index d6c6fcdc4b5c89208d9179c4605baf366bbde315..7752a2e12c5110558f9f508f7f54d650cac8cdc8 100644
 --- a/xnu/osfmk/arm/armv/cache.s
 +++ b/xnu/osfmk/arm/armv/cache.s
 @@ -187,7 +187,7 @@ EnterARM(cache_initialize)
@@ -102,7 +922,7 @@ index d6c6fcd..7752a2e 100644
      orr     r0, r0, #(1 << 1)
  
 diff --git a/xnu/osfmk/arm/commpage/commpage.c b/xnu/osfmk/arm/commpage/commpage.c
-index 5d17a74..178f30b 100644
+index 5d17a749a3f12dc3136c2878d428c19e710e2279..178f30b88bea0ccf4304d74c2af69ae4d87bf117 100644
 --- a/xnu/osfmk/arm/commpage/commpage.c
 +++ b/xnu/osfmk/arm/commpage/commpage.c
 @@ -54,7 +54,7 @@ void commpage_update_active_cpus(void)
@@ -133,7 +953,7 @@ index 5d17a74..178f30b 100644
      printf("IOS7LAB commpage cpus: configured=%u active=%u physical=%u logical=%u\n",
             *(uint8_t*)_COMM_PAGE_NCPUS,
 diff --git a/xnu/osfmk/arm/cpu.c b/xnu/osfmk/arm/cpu.c
-index 8fe7778..477502b 100644
+index 8fe7778429bdd814842ed88e1379f855b203776f..477502b86b0a947a31c412a79a2a55e0ae026dd4 100644
 --- a/xnu/osfmk/arm/cpu.c
 +++ b/xnu/osfmk/arm/cpu.c
 @@ -510,7 +510,7 @@ void get_cachetype_cp15()
@@ -164,7 +984,7 @@ index 8fe7778..477502b 100644
          __asm __volatile("mcr p15, 2, %0, c0, c0, 0"::"r"(sel));
          __asm __volatile("isb sy" ::: "memory");
 diff --git a/xnu/osfmk/arm/ios7_compat.h b/xnu/osfmk/arm/ios7_compat.h
-index 071c537..b13c6c2 100644
+index 071c53799ebc2a4268fc9f18e4c1c367b9ae1f30..b13c6c2bffededd28e8aa4a1f25057894a998e56 100644
 --- a/xnu/osfmk/arm/ios7_compat.h
 +++ b/xnu/osfmk/arm/ios7_compat.h
 @@ -2,7 +2,7 @@
@@ -186,7 +1006,7 @@ index 071c537..b13c6c2 100644
  #elif BOARD_CONFIG_ARMPBA8
      int enabled = 0;
 diff --git a/xnu/osfmk/arm/locore.s b/xnu/osfmk/arm/locore.s
-index 0ee4c8b..154e104 100644
+index 0ee4c8bb04320370a2b1335f880b02f8582f2616..08507af6fae50b881aab47d2bc4f4eedbf91188a 100644
 --- a/xnu/osfmk/arm/locore.s
 +++ b/xnu/osfmk/arm/locore.s
 @@ -67,6 +67,15 @@ mmu_reinitialize:
@@ -243,7 +1063,7 @@ index 0ee4c8b..154e104 100644
      mov     r7, pc, lsr#20
      add     r5, r4, r7, lsl#2   /* Make the TTE offset */
 diff --git a/xnu/osfmk/arm/model_dep.c b/xnu/osfmk/arm/model_dep.c
-index 98b6971..9f91820 100644
+index 98b6971dee7dc0a752c41b082d495568f2be4f8f..9f9182051bf2070a891a884196a65863ed9bc167 100644
 --- a/xnu/osfmk/arm/model_dep.c
 +++ b/xnu/osfmk/arm/model_dep.c
 @@ -147,12 +147,13 @@ static void machine_conf(void)
@@ -265,7 +1085,7 @@ index 98b6971..9f91820 100644
       * (cc_filled == NULL) -> kernel data abort in mcache_free_ext during
       * bsd_init.  Mirrors hd2base/osfmk/arm/model_dep.c.
 diff --git a/xnu/osfmk/arm/pmap.c b/xnu/osfmk/arm/pmap.c
-index ad4b541..ff69190 100644
+index ad4b541c24febd8b85292aabc15427706bb9e3ed..ff6919018cd7cb0361412235cf6c9fa809f994ae 100644
 --- a/xnu/osfmk/arm/pmap.c
 +++ b/xnu/osfmk/arm/pmap.c
 @@ -202,7 +202,7 @@ uint32_t virt_begin, virt_end;  /* Virtual Address Space. */
@@ -323,7 +1143,7 @@ index ad4b541..ff69190 100644
       * (PIO-filled, never executed). pte_sync above only cleans D for the
       * walker. Sync D + invalidate I via the linear map so the first fetch
 diff --git a/xnu/osfmk/arm/traps_lo.s b/xnu/osfmk/arm/traps_lo.s
-index 0fb58ed..71c9960 100644
+index 0fb58edd5e16e51978e8e998b1ab2d436f5db23a..71c996008fa884a208e9cbe1ef2a4948f6fc3c9e 100644
 --- a/xnu/osfmk/arm/traps_lo.s
 +++ b/xnu/osfmk/arm/traps_lo.s
 @@ -113,7 +113,7 @@ undef_from_kernel:
@@ -363,7 +1183,7 @@ index 0fb58ed..71c9960 100644
  #endif
      bne     restore_kernel_context
 diff --git a/xnu/osfmk/mach/arm/vm_param.h b/xnu/osfmk/mach/arm/vm_param.h
-index 0e8ef05..ee49f90 100644
+index 0e8ef0594bf6e0099e4836c3210e93191bd2b1b7..ee49f90e9434018d91ced8e3c4523298cc9e3d50 100644
 --- a/xnu/osfmk/mach/arm/vm_param.h
 +++ b/xnu/osfmk/mach/arm/vm_param.h
 @@ -60,7 +60,7 @@
@@ -375,8 +1195,22 @@ index 0e8ef05..ee49f90 100644
  /* This ARM pmap uses a 1 GiB TTBR0 split. Ordinary user allocations must
   * stay below the kernel-owned commpage at 0x40000000. */
  #define VM_MAX_ADDRESS		((vm_address_t) 0x40000000)
+diff --git a/xnu/osfmk/mach/message.h b/xnu/osfmk/mach/message.h
+index 443daab3036c09ecc4643526dc661575183d1046..24817100f41e7fdfc4a3bfd1c8520753859b98bf 100644
+--- a/xnu/osfmk/mach/message.h
++++ b/xnu/osfmk/mach/message.h
+@@ -359,6 +359,9 @@ typedef	struct
+   mach_msg_id_t		msgh_id;
+ } mach_msg_header_t;
+ 
++/* Kernel MIG server reply cleanup helper. */
++extern void mach_msg_destroy_from_kernel(mach_msg_header_t *msg);
++
+ #define MACH_MSG_NULL (mach_msg_header_t *) 0
+ 
+ typedef struct
 diff --git a/xnu/pexpert/arm/common/pe_bringup.c b/xnu/pexpert/arm/common/pe_bringup.c
-index 56bb735..04d12df 100644
+index 56bb73534b2484a3ccde7604c525cea756bd1cb1..04d12df54f26a1a0f27db0335543268951f64034 100644
 --- a/xnu/pexpert/arm/common/pe_bringup.c
 +++ b/xnu/pexpert/arm/common/pe_bringup.c
 @@ -50,6 +50,9 @@ void PE_early_puts(char *s)
@@ -391,7 +1225,7 @@ index 56bb735..04d12df 100644
  #endif
 diff --git a/xnu/pexpert/arm/mt8127_tb3_timer.c b/xnu/pexpert/arm/mt8127_tb3_timer.c
 new file mode 100644
-index 0000000..843c236
+index 0000000000000000000000000000000000000000..843c23668ce4bd41dfa4184660c919518779d5cc
 --- /dev/null
 +++ b/xnu/pexpert/arm/mt8127_tb3_timer.c
 @@ -0,0 +1,283 @@
@@ -680,7 +1514,7 @@ index 0000000..843c236
 +#endif
 diff --git a/xnu/pexpert/arm/mt8127_tb3_timer.h b/xnu/pexpert/arm/mt8127_tb3_timer.h
 new file mode 100644
-index 0000000..81b594b
+index 0000000000000000000000000000000000000000..81b594b31c3a0953828ef1c7e63c5b74c664cdeb
 --- /dev/null
 +++ b/xnu/pexpert/arm/mt8127_tb3_timer.h
 @@ -0,0 +1,19 @@
@@ -705,7 +1539,7 @@ index 0000000..81b594b
 +#endif
 diff --git a/xnu/pexpert/arm/pe_mt8127_tb3.c b/xnu/pexpert/arm/pe_mt8127_tb3.c
 new file mode 100644
-index 0000000..d7c9a9d
+index 0000000000000000000000000000000000000000..3b5aa04a59d5e1f293317171fef17038b746c1ab
 --- /dev/null
 +++ b/xnu/pexpert/arm/pe_mt8127_tb3.c
 @@ -0,0 +1,112 @@
@@ -822,7 +1656,7 @@ index 0000000..d7c9a9d
 +}
 +#endif
 diff --git a/xnu/pexpert/conf/files.arm b/xnu/pexpert/conf/files.arm
-index 1d213d5..a7d4b9c 100644
+index 1d213d5a43fd46b614d61bb321c94069e4f8f602..a7d4b9c48d3c6c6c04071b7852092a47a1a1cd74 100644
 --- a/xnu/pexpert/conf/files.arm
 +++ b/xnu/pexpert/conf/files.arm
 @@ -12,6 +12,8 @@ pexpert/arm/pe_qsd8250_leo.c standard
@@ -834,119 +1668,3 @@ index 1d213d5..a7d4b9c 100644
  pexpert/arm/pe_exynos4210_i9100.c standard
  pexpert/arm/i9100_timer.c standard
  pexpert/arm/pe_omap3430.c		standard
-
-diff --git a/xnu/osfmk/mach/message.h b/xnu/osfmk/mach/message.h
---- a/xnu/osfmk/mach/message.h
-+++ b/xnu/osfmk/mach/message.h
-@@ -358,6 +358,9 @@ typedef struct
-   mach_msg_id_t		msgh_id;
- } mach_msg_header_t;
- 
-+/* Kernel MIG server reply cleanup helper. */
-+extern void mach_msg_destroy_from_kernel(mach_msg_header_t *msg);
-+
- #define MACH_MSG_NULL (mach_msg_header_t *) 0
- 
- typedef struct
-diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
---- a/xnu/bsd/kern/decmpfs.c
-+++ b/xnu/bsd/kern/decmpfs.c
-@@ -45,3 +45,4 @@
- #include <libkern/zlib.h>
- #include <kern/kalloc.h>
-+#include <IOKit/IOLib.h>
- #include <libkern/OSByteOrder.h>
-
-diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
---- a/xnu/makedefs/MakeInc.def
-+++ b/xnu/makedefs/MakeInc.def
-@@ -466,2 +466,7 @@ OTHER_CXXFLAGS	=
- 
-+ifeq ($(MACHINE_CONFIG),MT8127_TB3)
-+OTHER_CFLAGS += -Wno-error=implicit-function-declaration -Wno-error=int-conversion -fno-stack-protector
-+OTHER_CXXFLAGS += -Wno-error=implicit-function-declaration -Wno-c++11-narrowing -fno-stack-protector
-+endif
-+
- # Linux hosts: relax warnings that newer clang promotes to errors, and
-
-diff --git a/xnu/bsd/sys/spawn_internal.h b/xnu/bsd/sys/spawn_internal.h
---- a/xnu/bsd/sys/spawn_internal.h
-+++ b/xnu/bsd/sys/spawn_internal.h
-@@ -146,2 +146,5 @@
- #define POSIX_SPAWN_APPTYPE_IOS_APPLEDAEMON    0x0001          /* it is an iOS apple daemon  */
-+#define POSIX_SPAWN_APPTYPE_OSX_TAL            0
-+#define POSIX_SPAWN_APPTYPE_OSX_WIDGET         0
-+#define POSIX_SPAWN_APPTYPE_DELAYIDLESLEEP     0
- #else /* TARGET_OS_EMBEDDED */
-diff --git a/xnu/libkern/c++/OSRuntime.cpp b/xnu/libkern/c++/OSRuntime.cpp
---- a/xnu/libkern/c++/OSRuntime.cpp
-+++ b/xnu/libkern/c++/OSRuntime.cpp
-@@ -664,3 +664,42 @@
- 	".thumb_func\n.globl _memset.116\n_memset.116:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.117\n_memset.117:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.118\n_memset.118:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.119\n_memset.119:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.120\n_memset.120:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.121\n_memset.121:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.122\n_memset.122:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.123\n_memset.123:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.124\n_memset.124:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.125\n_memset.125:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.126\n_memset.126:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.127\n_memset.127:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.128\n_memset.128:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.129\n_memset.129:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.130\n_memset.130:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.131\n_memset.131:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.132\n_memset.132:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.133\n_memset.133:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.134\n_memset.134:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.135\n_memset.135:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.278\n_memset.278:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.279\n_memset.279:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.280\n_memset.280:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.281\n_memset.281:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.282\n_memset.282:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.283\n_memset.283:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.284\n_memset.284:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.285\n_memset.285:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.286\n_memset.286:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.287\n_memset.287:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.288\n_memset.288:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.289\n_memset.289:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.290\n_memset.290:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.291\n_memset.291:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.292\n_memset.292:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.293\n_memset.293:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.294\n_memset.294:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.295\n_memset.295:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.296\n_memset.296:\n b.w _memset\n"
-+	".thumb_func\n.globl _memset.297\n_memset.297:\n b.w _memset\n"
- 	".thumb_func\n.globl _memset.188\n_memset.188:\n b.w _memset\n");
- #endif
-diff --git a/xnu/iokit/bsddev/IOKitBSDInit.cpp b/xnu/iokit/bsddev/IOKitBSDInit.cpp
---- a/xnu/iokit/bsddev/IOKitBSDInit.cpp
-+++ b/xnu/iokit/bsddev/IOKitBSDInit.cpp
-@@ -420,2 +420,22 @@
-+#if defined(BOARD_CONFIG_MT8127_TB3)
-+        unsigned int tb3rd_pa = 0;
-+        unsigned int tb3rd_size = 0;
-+        boolean_t have_pa = PE_parse_boot_argn("tb3rd_pa", &tb3rd_pa, sizeof(tb3rd_pa));
-+        boolean_t have_size = PE_parse_boot_argn("tb3rd_size", &tb3rd_size, sizeof(tb3rd_size));
-+        if (have_pa || have_size) {
-+            uint64_t tb3rd_end = (uint64_t)tb3rd_pa + tb3rd_size;
-+            if (!have_pa || !have_size || !tb3rd_size ||
-+                (tb3rd_pa & 0xfffU) || (tb3rd_size & 0xfffU) ||
-+                tb3rd_pa < 0x80000000U || tb3rd_end > 0xBED00000ULL)
-+                panic("TB3 invalid in-memory root disk range");
-+            if (mdevlookup(0) >= 0)
-+                panic("TB3 root memory device md0 already exists");
-+            if (mdevadd(0, (uint64_t)tb3rd_pa >> 12,
-+                        tb3rd_size >> 12, 1) < 0)
-+                panic("TB3 could not register root memory device md0");
-+            IOLog("TB3 root disk md0: pa=0x%08x bytes=0x%08x\\n",
-+                  tb3rd_pa, tb3rd_size);
-+        }
-+#endif
- #if defined(BOARD_CONFIG_ARMPBA8)
-         /* PC-only lab storage. QEMU's extra low RAM backs an image; the

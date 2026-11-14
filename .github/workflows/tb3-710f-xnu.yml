@@ -155,10 +155,13 @@ jobs:
           cp uniLoader out-handoff/
           cp xnu-artifact/mach_kernel out-handoff/
           cp blob/dtb out-handoff/tb3-device-tree.adt
+          cp tools/pack_tb3_boot.py out-handoff/
           cat > out-handoff/README.txt <<'EOF'
           Early XNU handoff build for Lenovo TB3-710F.
           Contains the compiled ARMv7 XNU Mach-O, uniLoader, and a minimal
           Apple-format device tree for first-kernel bring-up.
+          It also includes pack_tb3_boot.py, which can build an Android boot image
+          from your read-only boot backup and uniLoader without flashing anything.
           This is not a working iOS image: no iOS HFS+ root filesystem or
           dyld shared cache is included. Do not flash this artifact as-is.
           EOF

@@ -866,7 +866,7 @@ diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
 index 0000000..0000000 100644
 --- a/xnu/bsd/kern/decmpfs.c
 +++ b/xnu/bsd/kern/decmpfs.c
-@@ -45,6 +45,7 @@
+@@ -45,3 +45,4 @@
  #include <libkern/zlib.h>
  #include <kern/kalloc.h>
 +#include <IOKit/IOLib.h>

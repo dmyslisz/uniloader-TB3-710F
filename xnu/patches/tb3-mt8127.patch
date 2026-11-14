@@ -878,3 +878,49 @@ diff --git a/xnu/bsd/sys/spawn_internal.h b/xnu/bsd/sys/spawn_internal.h
 +#define POSIX_SPAWN_APPTYPE_OSX_WIDGET         0
 +#define POSIX_SPAWN_APPTYPE_DELAYIDLESLEEP     0
  #else /* TARGET_OS_EMBEDDED */
+diff --git a/xnu/libkern/c++/OSRuntime.cpp b/xnu/libkern/c++/OSRuntime.cpp
+--- a/xnu/libkern/c++/OSRuntime.cpp
++++ b/xnu/libkern/c++/OSRuntime.cpp
+@@ -664,3 +664,42 @@
+ 	".thumb_func\n.globl _memset.116\n_memset.116:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.117\n_memset.117:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.118\n_memset.118:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.119\n_memset.119:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.120\n_memset.120:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.121\n_memset.121:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.122\n_memset.122:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.123\n_memset.123:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.124\n_memset.124:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.125\n_memset.125:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.126\n_memset.126:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.127\n_memset.127:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.128\n_memset.128:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.129\n_memset.129:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.130\n_memset.130:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.131\n_memset.131:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.132\n_memset.132:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.133\n_memset.133:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.134\n_memset.134:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.135\n_memset.135:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.278\n_memset.278:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.279\n_memset.279:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.280\n_memset.280:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.281\n_memset.281:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.282\n_memset.282:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.283\n_memset.283:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.284\n_memset.284:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.285\n_memset.285:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.286\n_memset.286:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.287\n_memset.287:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.288\n_memset.288:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.289\n_memset.289:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.290\n_memset.290:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.291\n_memset.291:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.292\n_memset.292:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.293\n_memset.293:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.294\n_memset.294:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.295\n_memset.295:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.296\n_memset.296:\n b.w _memset\n"
++	".thumb_func\n.globl _memset.297\n_memset.297:\n b.w _memset\n"
+ 	".thumb_func\n.globl _memset.188\n_memset.188:\n b.w _memset\n");
+ #endif

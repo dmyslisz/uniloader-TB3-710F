@@ -13,31 +13,77 @@ permissions:
 
 jobs:
   build-xnu:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      TOOLROOT: /root/i9100-toolchain
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select the installed Xcode
+      - name: Install Linux XNU build dependencies
         run: |
-          xcodebuild -version
-          xcrun --find clang
-          xcrun --find mig
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison tcsh clang llvm uuid-dev libssl-dev libblocksruntime-dev libc6-dev-i386 gcc-multilib unifdef autoconf automake libtool pkg-config
 
-      - name: Fetch the ARMv7 XNU source
+      - name: Build the ARM Mach-O toolchain
+        run: |
+          git clone --depth 1 https://github.com/b-man/xnu-deps-linux.git xnu-deps-linux
+          sudo make -C xnu-deps-linux -j2 all
+          sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
+          sudo mkdir -p "$TOOLROOT/bin"
+          ld_candidate=$(find "$TOOLROOT/bin" -maxdepth 1 -type f -name '*ld' | head -n 1)
+          test -n "$ld_candidate"
+          sudo ln -sf "$ld_candidate" "$TOOLROOT/bin/ld64"
+          test -x "$TOOLROOT/bin/ld64"
+
+      - name: Fetch and patch XNU
         run: |
           git clone --depth 1 --branch xnu/j1xlte-source https://github.com/zenkernelsam/xnu-S2I9100.git xnu-src
           git -C xnu-src checkout c3c2da7d790db429f69c78b4bd3b80f7466efd94
           git -C xnu-src apply "$GITHUB_WORKSPACE/xnu/patches/tb3-mt8127.patch"
 
+      - name: Configure Linux tool discovery
+        run: |
+          sudo tee /usr/bin/xcrun >/dev/null <<'XCRUN'
+          #!/bin/sh
+          case "$*" in
+            *"--show-sdk-path"*) echo / ;;
+            *"-find clang++"*) command -v clang++ ;;
+            *"-find clang"*) command -v clang ;;
+            *"-find mig"*) echo "$TOOLROOT/bin/mig" ;;
+            *"-find ld"*) echo "$TOOLROOT/bin/ld" ;;
+            *"-find as"*) echo "$TOOLROOT/bin/as" ;;
+            *"-find strip"*) echo "$TOOLROOT/bin/strip" ;;
+            *"-find lipo"*) echo "$TOOLROOT/bin/lipo" ;;
+            *"-find libtool"*) echo "$TOOLROOT/bin/libtool" ;;
+            *"-find nm"*) echo "$TOOLROOT/bin/nm" ;;
+            *"-find nmedit"*) echo "$TOOLROOT/bin/nmedit" ;;
+            *"-find unifdef"*) command -v unifdef ;;
+            *"-find setsegname"*) echo "$XNU_OBJROOT/SETUP/setsegname/setsegname" ;;
+            *"-find kextsymboltool"*) echo "$XNU_OBJROOT/SETUP/kextsymboltool/kextsymboltool" ;;
+            *) exit 1 ;;
+          esac
+          XCRUN
+          sudo chmod +x /usr/bin/xcrun
+
       - name: Build the MT8127 development kernel
         shell: bash
+        env:
+          CC: clang
+          CXX: clang++
+          HOST_CC: clang
+          HOST_FLEX: flex
+          HOST_BISON: bison
+          SDKROOT: /
+          NO_DTRACE_SYMS: YES
         run: |
           set -o pipefail
           cd xnu-src/xnu
-          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" NO_DTRACE_SYMS=YES MAKEJOBS=2 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
+          export XNU_OBJROOT="$PWD/BUILD/obj"
+          mkdir -p BUILD
+          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" MAKEJOBS=2 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
 
-      - name: Collect the kernel
+      - name: Collect build outputs
         if: always()
         run: |
           mkdir -p out

@@ -51,7 +51,7 @@ jobs:
           s = p.read_text()
           start = s.index("  if (errno > sys_nerr)")
           end = s.index("  (void)putc", start)
-          s = s[:start] + '  fprintf(stderr, "%s.", strerror(errno));\\n' + s[end:]
+          s = s[:start] + '  fprintf(stderr, "%s.", strerror(errno));\n' + s[end:]
           p.write_text(s)
           PY
           make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all

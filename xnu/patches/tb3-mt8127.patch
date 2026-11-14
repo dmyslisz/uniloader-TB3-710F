@@ -863,8 +863,8 @@ diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
 @@ -466,2 +466,7 @@ OTHER_CXXFLAGS	=
  
 +ifeq ($(MACHINE_CONFIG),MT8127_TB3)
-+OTHER_CFLAGS += -Wno-error=implicit-function-declaration -Wno-error=int-conversion
-+OTHER_CXXFLAGS += -Wno-error=implicit-function-declaration -Wno-c++11-narrowing
++OTHER_CFLAGS += -Wno-error=implicit-function-declaration -Wno-error=int-conversion -fno-stack-protector
++OTHER_CXXFLAGS += -Wno-error=implicit-function-declaration -Wno-c++11-narrowing -fno-stack-protector
 +endif
 +
  # Linux hosts: relax warnings that newer clang promotes to errors, and

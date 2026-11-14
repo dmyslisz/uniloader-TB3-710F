@@ -755,13 +755,14 @@ index 1d89da7..c0f8783 100644
 +# Lenovo TB3-710F MT8127 MSDC0 eMMC (opt-in, read-only PIO)
 +iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp optional iokitcpp
 diff --git a/xnu/libkern/c++/OSRuntime.cpp b/xnu/libkern/c++/OSRuntime.cpp
-index af0b351..5d06b55 100644
+index af0b351..c7fdb91 100644
 --- a/xnu/libkern/c++/OSRuntime.cpp
 +++ b/xnu/libkern/c++/OSRuntime.cpp
-@@ -661,6 +661,45 @@ __asm__(".text\n.thumb\n"
+@@ -661,6 +661,46 @@ __asm__(".text\n.thumb\n"
  	".thumb_func\n.globl _memcpy.413\n_memcpy.413:\n b.w _memcpy\n"
  	".thumb_func\n.globl _memcpy.416\n_memcpy.416:\n b.w _memcpy\n"
  	".thumb_func\n.globl _memset.116\n_memset.116:\n b.w _memset\n"
++".thumb_func\n.globl _memset.37\n_memset.37:\n b.w _memset\n"
 +	".thumb_func\n.globl _memset.117\n_memset.117:\n b.w _memset\n"
 +	".thumb_func\n.globl _memset.118\n_memset.118:\n b.w _memset\n"
 +	".thumb_func\n.globl _memset.119\n_memset.119:\n b.w _memset\n"

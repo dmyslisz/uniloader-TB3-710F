@@ -211,7 +211,7 @@ index 0ee4c8b..154e104 100644
  #endif
 +#ifdef BOARD_CONFIG_MT8127_TB3
 +    /* MT8127: retain identity mappings for the bootloader framebuffer
-+     * (1024x600 RGB565 at 0xBEE00000), UART0, GPT and Cortex-A7 GIC. */
++     * (1024x600 ARGB8888 at 0xBEE00000), UART0, GPT and Cortex-A7 GIC. */
 +    LoadConstantToReg(0x402, r8)
 +    LoadConstantToReg(0xBEE00000, r7)
 +    mov r9, #2

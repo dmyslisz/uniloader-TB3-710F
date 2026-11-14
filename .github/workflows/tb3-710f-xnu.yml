@@ -57,6 +57,15 @@ jobs:
           make -C xnu-deps-linux/bootstrap_cmds-60/migcom.tproj CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sed -i 's|make CFLAGS=-I$(PWD)/include all|make CFLAGS="-I$(PWD)/include -include string.h" all|' xnu-deps-linux/Makefile
           sed -i '1i#include <string.h>' xnu-deps-linux/cctools-836/as/sections.c
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("xnu-deps-linux/cctools-836/libstuff/macosx_deployment_target.c")
+          s = p.read_text()
+          start = s.index("\tosversion_name[0] = CTL_KERN;")
+          end = s.index("\n\n\t/*\n\t * Now parse this out.", start)
+          s = s[:start] + '\tstrcpy(osversion, "10.6.0");' + s[end:]
+          p.write_text(s)
+          PY
           make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
           sudo mkdir -p "$TOOLROOT/bin"

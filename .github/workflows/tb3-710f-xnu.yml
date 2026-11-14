@@ -57,7 +57,7 @@ jobs:
           make -C xnu-deps-linux/bootstrap_cmds-60/migcom.tproj CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sed -i 's|make CFLAGS=-I$(PWD)/include all|make CFLAGS="-I$(PWD)/include -include string.h" all|' xnu-deps-linux/Makefile
           sed -i '1i#include <string.h>' xnu-deps-linux/cctools-836/as/sections.c
-          sed -i 's/SUBDIRS=libstuff ar as misc libobjc2 otool ld64/SUBDIRS=libstuff ar as misc libobjc2 ld64/' xnu-deps-linux/cctools-836/Makefile.am xnu-deps-linux/cctools-836/Makefile.in
+          sed -i 's/SUBDIRS = libstuff ar as misc libobjc2 otool ld64/SUBDIRS = libstuff ar as misc libobjc2 ld64/' xnu-deps-linux/cctools-836/Makefile.am xnu-deps-linux/cctools-836/Makefile.in
           python3 - <<'PY'
           from pathlib import Path
           p = Path("xnu-deps-linux/cctools-836/libstuff/macosx_deployment_target.c")

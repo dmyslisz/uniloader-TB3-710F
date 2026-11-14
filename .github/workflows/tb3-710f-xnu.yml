@@ -13,76 +13,20 @@ permissions:
 
 jobs:
   build-xnu:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     timeout-minutes: 120
     env:
-      TOOLROOT: /tmp/i9100-toolchain
       MACOSX_DEPLOYMENT_TARGET: 10.6
+      NO_DTRACE_SYMS: YES
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux XNU build dependencies
+      - name: Check Apple build tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential flex bison tcsh clang llvm uuid-dev libssl-dev libblocksruntime-dev llvm-dev libc6-dev-i386 gcc-multilib unifdef autoconf automake libtool pkg-config
-
-      - name: Build the ARM Mach-O toolchain
-        run: |
-          git clone --depth 1 https://github.com/b-man/xnu-deps-linux.git xnu-deps-linux
-          # cctools 836 targets Darwin; supply the sysctl declarations it needs on Linux.
-          mkdir -p include/sys
-          cat > include/sys/sysctl.h <<'SYSCTL'
-          #ifndef TB3_SYS_SYSCTL_H
-          #define TB3_SYS_SYSCTL_H
-          #include <stddef.h>
-          #define CTL_KERN 1
-          #define KERN_OSRELEASE 2
-          int sysctl(const int *, int, void *, size_t *, void *, size_t);
-          #endif
-          SYSCTL
-          # In newer GCC, "bool" is a language keyword; this 2016 C source used it as an identifier.
-          sed -i 's/\<bool\>/value/g' xnu-deps-linux/bootstrap_cmds-60/migcom.tproj/strdefs.h
-          sed -i 's/\<bool\>/value/g' xnu-deps-linux/bootstrap_cmds-60/migcom.tproj/string.c
-          # strmode(3) is BSD-only and appears only in verbose ar listings.
-          sed -i 's/(void)strmode(chdr.mode, buf);/strcpy(buf, "----------");/' xnu-deps-linux/cctools-836/ar/contents.c
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("xnu-deps-linux/cctools-836/as/input-scrub.c")
-          s = p.read_text()
-          start = s.index("  if (errno > sys_nerr)")
-          end = s.index("  (void)putc", start)
-          s = s[:start] + '  fprintf(stderr, "%s.", strerror(errno));\n' + s[end:]
-          p.write_text(s)
-          PY
-          make -C xnu-deps-linux/bootstrap_cmds-60/migcom.tproj CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
-          sed -i 's|make CFLAGS=-I$(PWD)/include all|make CFLAGS="-I$(PWD)/include -include string.h" all|' xnu-deps-linux/Makefile
-          sed -i '1i#include <string.h>' xnu-deps-linux/cctools-836/as/sections.c
-          sed -i 's/SUBDIRS = libstuff ar as misc libobjc2 otool ld64/SUBDIRS = libstuff ar as misc libobjc2 ld64/' xnu-deps-linux/cctools-836/Makefile.am xnu-deps-linux/cctools-836/Makefile.in
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("xnu-deps-linux/cctools-836/libstuff/macosx_deployment_target.c")
-          s = p.read_text()
-          start = s.index("\tosversion_name[0] = CTL_KERN;")
-          end = s.index("\n\n\t/*\n\t * Now parse this out.", start)
-          s = s[:start] + '\tstrcpy(osversion, "10.6.0");' + s[end:]
-          p.write_text(s)
-          PY
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("xnu-deps-linux/cctools-836/otool/print_objc.c")
-          s = p.read_text()
-          s = '#include <stdint.h>\n' + s
-          s = s.replace('objc_getClass(objc_class.name)', 'objc_getClass((const char *)(uintptr_t)objc_class.name)')
-          s = s.replace('objc_getMetaClass(objc_class.name)', 'objc_getMetaClass((const char *)(uintptr_t)objc_class.name)')
-          p.write_text(s)
-          PY
-          CC=gcc make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
-          sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
-          sudo mkdir -p "$TOOLROOT/bin"
-          ld_candidate=$(find "$TOOLROOT/bin" -maxdepth 1 -type f -name '*ld' | head -n 1)
-          test -n "$ld_candidate"
-          sudo ln -sf "$ld_candidate" "$TOOLROOT/bin/ld64"
-          test -x "$TOOLROOT/bin/ld64"
+          xcode-select -p
+          xcrun --find clang
+          xcrun --find ld
+          xcrun --find mig
 
       - name: Fetch and patch XNU
         run: |
@@ -92,46 +36,18 @@ jobs:
           git -C xnu-src checkout FETCH_HEAD
           git -C xnu-src apply "$GITHUB_WORKSPACE/xnu/patches/tb3-mt8127.patch"
 
-      - name: Configure Linux tool discovery
-        run: |
-          sudo tee /usr/bin/xcrun >/dev/null <<'XCRUN'
-          #!/bin/sh
-          case "$*" in
-            *"--show-sdk-path"*) echo / ;;
-            *"-find clang++"*) command -v clang++ ;;
-            *"-find clang"*) command -v clang ;;
-            *"-find mig"*) echo "$TOOLROOT/bin/mig" ;;
-            *"-find ld"*) echo "$TOOLROOT/bin/ld" ;;
-            *"-find as"*) echo "$TOOLROOT/bin/as" ;;
-            *"-find strip"*) echo "$TOOLROOT/bin/strip" ;;
-            *"-find lipo"*) echo "$TOOLROOT/bin/lipo" ;;
-            *"-find libtool"*) echo "$TOOLROOT/bin/libtool" ;;
-            *"-find nm"*) echo "$TOOLROOT/bin/nm" ;;
-            *"-find nmedit"*) echo "$TOOLROOT/bin/nmedit" ;;
-            *"-find unifdef"*) command -v unifdef ;;
-            *"-find setsegname"*) echo "$XNU_OBJROOT/SETUP/setsegname/setsegname" ;;
-            *"-find kextsymboltool"*) echo "$XNU_OBJROOT/SETUP/kextsymboltool/kextsymboltool" ;;
-            *) exit 1 ;;
-          esac
-          XCRUN
-          sudo chmod +x /usr/bin/xcrun
-
       - name: Build the MT8127 development kernel
         shell: bash
         env:
-          CC: clang
-          CXX: clang++
-          HOST_CC: clang
-          HOST_FLEX: flex
-          HOST_BISON: bison
-          SDKROOT: /
-          NO_DTRACE_SYMS: YES
+          SDKROOT: ${{ github.workspace }}/xnu-src
         run: |
           set -o pipefail
           cd xnu-src/xnu
           export XNU_OBJROOT="$PWD/BUILD/obj"
           mkdir -p BUILD
-          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" MAKEJOBS=2 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
+          SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          export SDKROOT
+          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" MAKEJOBS=3 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
 
       - name: Collect build outputs
         if: always()

@@ -130,6 +130,39 @@ static unsigned int align_up(unsigned int v, unsigned int a)
 	return (v + a - 1) & ~(a - 1);
 }
 
+static unsigned int xnu_ramdisk_capacity(unsigned int phys_base,
+					 unsigned int mem_size,
+					 unsigned int ramdisk_pa)
+{
+	uint64_t ram_end = (uint64_t)phys_base + mem_size;
+	if (ramdisk_pa < phys_base || (uint64_t)ramdisk_pa >= ram_end)
+		return 0;
+	return (unsigned int)(ram_end - ramdisk_pa);
+}
+
+static int append_hex_bootarg(char *cmdline, unsigned int capacity,
+			      const char *key, unsigned int value)
+{
+	static const char digits[] = "0123456789abcdef";
+	unsigned int used = (unsigned int)strlen(cmdline);
+	unsigned int keylen = (unsigned int)strlen(key);
+	unsigned int i;
+
+	/* space + key + "=0x" + 8 digits + NUL */
+	if (used + keylen + 13U > capacity)
+		return 0;
+	cmdline[used++] = ' ';
+	memcpy(cmdline + used, key, keylen);
+	used += keylen;
+	cmdline[used++] = '=';
+	cmdline[used++] = '0';
+	cmdline[used++] = 'x';
+	for (i = 0; i < 8; i++)
+		cmdline[used++] = digits[(value >> ((7U - i) * 4U)) & 0xfU];
+	cmdline[used] = 0;
+	return 1;
+}
+
 /*
  * Derive the entry offset from the unpacked Image's own Mach-O header so
  * a kernel edit that relinks the entry does not require re-flashing the
@@ -210,6 +243,7 @@ void arch_load_kernel_xnu(void *kernel, void *dt, void *ramdisk)
 	unsigned int dt_pa, ba_pa, top;
 	unsigned int rd_pa = 0;
 	unsigned int rd_size = 0;
+	unsigned int rd_capacity = 0;
 	/* 2048 bytes on the 4KB bootstrap stack squeezed the caller frame
 	 * past the stack bottom during the DSC loop's printk calls
 	 * (observed: cacheslice lz4 fails at stride/C-cadence, kernel and
@@ -571,10 +605,18 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 				    "xnu: ramdisk lz4 %u bytes -> %08x cs=%08x\n",
 				    rd_size - 4, rd_pa, csum);
 			}
+			rd_capacity = xnu_ramdisk_capacity(phys_base,
+			    CONFIG_XNU_MEMSIZE, rd_pa);
+			if (!rd_capacity) {
+				printk(KERN_EMERG, "xnu: invalid LZ4 ramdisk address %08x\n",
+				       rd_pa);
+				while (1)
+					__asm__ __volatile__("wfi");
+			}
 			{
 				size_t rr = lz4_decompress(rd + 4,
 				    rd_size - 4, (void *)rd_pa,
-				    0x2000000);
+				    rd_capacity);
 
 				rd_size = (unsigned int)rr;
 				/* lz4_decompress returns the decoded byte
@@ -612,7 +654,19 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		    rd[0] == 0x1F && rd[1] == 0x8B) {
 			unsigned char method = rd[2];
 
+#ifdef CONFIG_XNU_RAMDISK_PA
+			rd_pa = CONFIG_XNU_RAMDISK_PA;
+#else
 			rd_pa = align_up(ba_pa + sizeof(*ba), 4);
+#endif
+			rd_capacity = xnu_ramdisk_capacity(phys_base,
+			    CONFIG_XNU_MEMSIZE, rd_pa);
+			if (!rd_capacity) {
+				printk(KERN_EMERG, "xnu: invalid gzip ramdisk address %08x\n",
+				       rd_pa);
+				while (1)
+					__asm__ __volatile__("wfi");
+			}
 			if (method == 8) {
 				/* Huffman tables go into the unused gap
 				 * between the kernel image and the DT
@@ -704,6 +758,13 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 				}
 				printk(KERN_INFO,
 				    "xnu: expect %u bytes out\n", rd_expect);
+				if (!rd_expect || rd_expect > rd_capacity) {
+					printk(KERN_EMERG,
+					    "xnu: gzip ramdisk size %u exceeds capacity %u\n",
+					    rd_expect, rd_capacity);
+					while (1)
+						__asm__ __volatile__("wfi");
+				}
 				rd_size = (unsigned int)inflate_raw(
 				    rd + hdr, rd_size - hdr,
 				    (void *)rd_pa, rd_expect);
@@ -742,7 +803,20 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			}
 		} else if (ramdisk && rd_size) {
 			/* Uncompressed fallback */
+#ifdef CONFIG_XNU_RAMDISK_PA
+			rd_pa = CONFIG_XNU_RAMDISK_PA;
+#else
 			rd_pa = align_up(ba_pa + sizeof(*ba), 4);
+#endif
+			rd_capacity = xnu_ramdisk_capacity(phys_base,
+			    CONFIG_XNU_MEMSIZE, rd_pa);
+			if (!rd_capacity || rd_size > rd_capacity) {
+				printk(KERN_EMERG,
+				    "xnu: uncompressed ramdisk size %u exceeds capacity %u\n",
+				    rd_size, rd_capacity);
+				while (1)
+					__asm__ __volatile__("wfi");
+			}
 			memcpy((void *)rd_pa, ramdisk, rd_size);
 			printk(KERN_INFO,
 			    "xnu: ramdisk %u bytes -> %08x vh=%02x%02x\n",
@@ -808,6 +882,20 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		}
 		printk(KERN_INFO, "xnu: cmdline='%s'\n", ba->CommandLine);
 	}
+#ifdef CONFIG_LENOVO_TB3_710F
+	if (rd_pa && rd_size) {
+		if (!append_hex_bootarg(ba->CommandLine,
+		    sizeof(ba->CommandLine), "tb3rd_pa", rd_pa) ||
+		    !append_hex_bootarg(ba->CommandLine,
+		    sizeof(ba->CommandLine), "tb3rd_size", rd_size)) {
+			printk(KERN_EMERG, "xnu: command line has no room for TB3 ramdisk arguments\n");
+			while (1)
+				__asm__ __volatile__("wfi");
+		}
+		printk(KERN_INFO, "xnu: ramdisk bootargs rd=md0 pa=%08x size=%u\n",
+		       rd_pa, rd_size);
+	}
+#endif
 
 	{
 		volatile unsigned int *p = (volatile unsigned int *)ba;

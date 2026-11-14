@@ -1,52 +1,45 @@
-# TB3-710F XNU root volume packaging
+# TB3-710F XNU root volume
 
-The loader's current memory-disk path accepts a gzip-compressed, raw HFS+ or
-HFSX volume. It decompresses the image into the physical range beginning at
-`CONFIG_XNU_RAMDISK_PA` (currently `0x90000000`) and exposes it to XNU as
-`md0`. The current usable RAM end is `0xBED00000`, so the uncompressed
-image, rounded up to 4 KiB, must fit in the 785,383,424-byte range between
-those values.
+## Root filesystem options
 
-A local extraction of the iPad2,5 iOS 7.0 (11A465) IPSW produced an
-`Apple_HFSX` root volume of 1,560,113,152 bytes (1,487.84 MiB), with 4 KiB
-allocation blocks and zero free blocks in the volume header. This is larger
-than the current memory-disk capacity, so this unmodified Apple root volume
-cannot be packaged for the current `md0` path. Compressing it does not reduce
-the required uncompressed RAM footprint.
+The original iPad2,5 iOS 7.0 (11A465) IPSW root volume is an Apple_HFSX
+image of 1,560,113,152 bytes (about 1.46 GiB). It is too large for the
+current RAM disk range, which ends at 0xBED00000 and starts at
+CONFIG_XNU_RAMDISK_PA (0x90000000). Compressing the image does not reduce its
+uncompressed RAM requirement.
 
-## Block-backed root path
+For the TB3 profile, the image can instead be stored as a file on a FAT32
+microSD card:
 
-The Lenovo MT8127 kernel source identifies MSDC0 as the eMMC host. Its
-TB3-710F board configuration uses an 8-bit data bus and the 200 MHz MSDC
-clock source; the controller registers are mapped at physical
-`0x11230000` (the Linux virtual base is `0xF1230000`). A practical XNU
-transport should start with low-speed, read-only PIO and avoid DMA and writes.
-The device's eMMC user area is much larger than this root volume.
+    IOS7/ROOTFS.HFS
 
-The XNU tree already has `IOBlockStorageDevice`, `IOStorage`, and
-`IOMediaBSDClient` support, plus board-specific PIO SD block-device examples.
-The TB3 implementation can follow that model: a native MSDC0/eMMC transport
-publishes read-only media, then the existing partition and HFSX code can mount
-the root volume. The current TB3 profile does not yet include this transport or
-a block-backed root mount. A raw HFSX image must be placed in a dedicated
-block range before a hardware root-mount test; do not overwrite LineageOS
-partitions as part of driver development.
+The loader's ARMv7 Mach-O XNU handoff sets tb3_sd=1. The TB3 XNU patch adds a
+read-only PIO transport for MSDC1, configures the board's four-bit SD pin mux,
+and locates this file on FAT32. The HFSX file is presented as block media to
+the existing HFS+ stack. Filesystem writes are held in a volatile copy-on-write
+overlay in RAM; they are not written back to the microSD image. The input
+image should be extracted from the decrypted IPSW's Apple_HFSX partition
+(partition 3) and copied unchanged to the path above.
 
-`tools/pack_tb3_ramdisk.py` validates the HFS+ volume header and RAM limit,
-then writes a deterministic gzip file. It does not make a filesystem, extract
-or decrypt an IPSW, include Apple files, or install anything on the tablet.
+The TB3 patch also supports a read-only PIO transport for MSDC0 eMMC, but the
+default profile selects MSDC1 microSD so it does not require placing an iOS
+root image on an eMMC partition.
 
-For a different, size-compatible root volume:
+## Hardware and boot status
 
-```powershell
-python tools/pack_tb3_ramdisk.py .\rootfs.raw .\blob\ramdisk
-```
+The Lenovo MT8127 kernel source configures MSDC1 as the removable four-bit SD
+host and uses PMIC rails VMC and VMCH for the card. The current XNU MSDC1
+driver does not yet implement that PMIC rail sequence. It also has not been
+tested on a cold boot with a card, so the SD power-up and root-volume read
+remain unverified on hardware.
 
-The volume needs to come from the same ARMv7 iOS build as the userspace and
-dyld shared cache used for the experiment. The XNU/uniLoader repository does
-not contain Apple userland, an IPSW, a root image, or a dyld shared cache.
-No iOS userspace has been booted yet.
+CI has built the patched ARMv7 Mach-O kernel and the uniLoader handoff image.
+The early-handoff artifact contains uniLoader, mach_kernel, and a minimal
+Apple device tree. It is not a complete iOS installation: the root volume is
+not bundled, no dyld shared cache is included, and the tablet has not yet
+booted XNU or iOS userspace.
 
-The current early-handoff CI artifact intentionally uses an empty ramdisk.
-It is only a kernel/framebuffer bring-up artifact and is not a bootable iOS
-image. Do not flash it.
+The tools/pack_tb3_boot.py script can create an Android boot image using a
+read-only backup of the tablet's existing boot image and the built uniLoader
+zImage. It preserves the original ramdisk, DTB, boot arguments, MTK wrapper,
+and partition size. It only creates a local file; it does not flash the tablet.

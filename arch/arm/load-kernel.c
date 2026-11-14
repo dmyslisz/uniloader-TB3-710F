@@ -209,6 +209,7 @@ void arch_load_kernel_xnu(void *kernel, void *dt, void *ramdisk)
 	unsigned int dtsize;
 	unsigned int dt_pa, ba_pa, top;
 	unsigned int rd_pa = 0;
+	unsigned int rd_size = 0;
 	/* 2048 bytes on the 4KB bootstrap stack squeezed the caller frame
 	 * past the stack bottom during the DSC loop's printk calls
 	 * (observed: cacheslice lz4 fails at stride/C-cadence, kernel and
@@ -533,7 +534,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 	 * topOfKernelData so the VM page allocator never touches it.
 	 * The embedded blob is gzip-compressed (build.sh packs it). */
 	{
-		unsigned int rd_size = PAYLOAD_SYM(ramdisk_size);
+		rd_size = PAYLOAD_SYM(ramdisk_size);
 		unsigned int rd_expect = 0;
 		const unsigned char *rd = (const unsigned char *)ramdisk;
 

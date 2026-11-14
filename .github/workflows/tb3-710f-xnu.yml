@@ -10,6 +10,7 @@ on:
       - "configs/tb3_710f_xnu_defconfig"
       - "tools/gen_tb3_adt.py"
       - "tools/pack_tb3_ramdisk.py"
+      - "tools/test_pack_tb3_ramdisk.py"
       - "Documentation/tb3-xnu-root-volume.md"
       - ".github/workflows/tb3-710f-xnu.yml"
   pull_request:
@@ -19,6 +20,7 @@ on:
       - "configs/tb3_710f_xnu_defconfig"
       - "tools/gen_tb3_adt.py"
       - "tools/pack_tb3_ramdisk.py"
+      - "tools/test_pack_tb3_ramdisk.py"
       - "Documentation/tb3-xnu-root-volume.md"
       - ".github/workflows/tb3-710f-xnu.yml"
 
@@ -125,7 +127,9 @@ jobs:
           sudo apt-get install -y build-essential flex bison gcc-arm-none-eabi binutils-arm-none-eabi
 
       - name: Validate TB3 image preparation tools
-        run: python3 -m py_compile tools/gen_tb3_adt.py tools/pack_tb3_ramdisk.py
+        run: |
+          python3 -m py_compile tools/gen_tb3_adt.py tools/pack_tb3_ramdisk.py tools/test_pack_tb3_ramdisk.py
+          python3 tools/test_pack_tb3_ramdisk.py
 
       - name: Compile uniLoader with the XNU handoff path
         run: |

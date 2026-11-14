@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 /* Mirrors pexpert/pexpert/arm/boot.h of the darwin-on-arm XNU tree. */
-#define XNU_BOOT_LINE_LENGTH	2048
+#define XNU_BOOT_LINE_LENGTH	256
 
 struct xnu_boot_video {
 	uint32_t v_baseAddr;
@@ -35,8 +35,6 @@ struct xnu_boot_args {
 	void *deviceTreeP;	/* virtual address */
 	uint32_t deviceTreeLength;
 	char CommandLine[XNU_BOOT_LINE_LENGTH];
-	uint32_t RamdiskPA;	/* physical address of ramdisk image */
-	uint32_t RamdiskSize;	/* size in bytes */
 };
 
 extern unsigned long dtb_size;
@@ -606,8 +604,6 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		    "xnu: vh=%08x sum=%08x (want 482b0004 cbcc81a2)\n",
 				    vh, sum);
 			}
-			ba->RamdiskPA = rd_pa;
-			ba->RamdiskSize = rd_size;
 			printk(KERN_INFO,
 			    "xnu: ramdisk lz4 -> %08x (%u)\n", rd_pa,
 			    rd_size);
@@ -737,8 +733,6 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		    "xnu: vh=%08x sum=%08x (want 482b0004 cbcc81a2)\n",
 					    vh, sum);
 				}
-				ba->RamdiskPA = rd_pa;
-				ba->RamdiskSize = rd_size;
 				printk(KERN_INFO,
 				    "xnu: ramdisk inflated -> %08x (%u)\n",
 				    rd_pa, rd_size);
@@ -749,8 +743,6 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			/* Uncompressed fallback */
 			rd_pa = align_up(ba_pa + sizeof(*ba), 4);
 			memcpy((void *)rd_pa, ramdisk, rd_size);
-			ba->RamdiskPA = rd_pa;
-			ba->RamdiskSize = rd_size;
 			printk(KERN_INFO,
 			    "xnu: ramdisk %u bytes -> %08x vh=%02x%02x\n",
 			       rd_size, rd_pa,
@@ -762,7 +754,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 
 	{
 		unsigned int t1 = ba_pa + sizeof(*ba);
-		unsigned int t2 = rd_pa + ba->RamdiskSize;
+		unsigned int t2 = rd_pa + rd_size;
 
 		top = align_up(t1 > t2 ? t1 : t2, 1 << 20);
 	}

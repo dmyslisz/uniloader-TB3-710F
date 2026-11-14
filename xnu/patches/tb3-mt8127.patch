@@ -762,7 +762,7 @@ index 0000000..d7c9a9d
 +{
 +    boot_args *args = (boot_args *)PE_state.bootArgs;
 +    PE_Video video;
-+#    volatile uint32_t *pixels;
++    volatile uint32_t *pixels;
 +    uint32_t x, y;
 +
 +    if (!args || args->Video.v_baseAddr != TB3_FB_PA ||

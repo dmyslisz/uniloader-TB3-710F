@@ -34,6 +34,15 @@ jobs:
           git -C xnu-src remote add origin https://github.com/zenkernelsam/xnu-S2I9100.git
           git -C xnu-src fetch --depth 1 origin c3c2da7d790db429f69c78b4bd3b80f7466efd94
           git -C xnu-src checkout FETCH_HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          makefile = Path("xnu-src/xnu/SETUP/md/Makefile")
+          s = makefile.read_text().replace("CFLAGS = -isysroot", "CFLAGS = -std=gnu89 -isysroot")
+          makefile.write_text(s)
+          source = Path("xnu-src/xnu/SETUP/md/md.c")
+          s = source.read_text().replace("#include <sys/stat.h>", "#include <sys/stat.h>\\n#include <fcntl.h>\\n#include <unistd.h>")
+          source.write_text(s)
+          PY
           git -C xnu-src apply "$GITHUB_WORKSPACE/xnu/patches/tb3-mt8127.patch"
 
       - name: Build the MT8127 development kernel

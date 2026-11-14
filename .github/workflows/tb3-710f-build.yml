@@ -19,6 +19,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential flex bison gcc-arm-none-eabi binutils-arm-none-eabi
 
+      - name: Validate TB3 XNU image preparation
+        run: |
+          python3 -m py_compile tools/gen_tb3_adt.py tools/pack_tb3_ramdisk.py tools/test_pack_tb3_ramdisk.py
+          python3 tools/test_pack_tb3_ramdisk.py
+          python3 tools/gen_tb3_adt.py /tmp/tb3-device-tree.adt
+          test -s /tmp/tb3-device-tree.adt
+
       - name: Configure TB3-710F framebuffer smoke profile
         run: make ARCH=arm CROSS_COMPILE=arm-none-eabi- tb3_710f_defconfig
 

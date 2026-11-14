@@ -55,6 +55,7 @@ jobs:
           p.write_text(s)
           PY
           make -C xnu-deps-linux/bootstrap_cmds-60/migcom.tproj CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
+          sed -i 's|make CFLAGS=-I$(PWD)/include all|make CFLAGS="-I$(PWD)/include -include string.h" all|' xnu-deps-linux/Makefile
           make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
           sudo mkdir -p "$TOOLROOT/bin"

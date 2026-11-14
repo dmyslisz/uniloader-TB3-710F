@@ -1,0 +1,54 @@
+name: TB3-710F MT8127 XNU ARMv7 build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/tb3-xnu-loader]
+    paths:
+      - "xnu/patches/tb3-mt8127.patch"
+      - ".github/workflows/tb3-710f-xnu.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-xnu:
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the installed Xcode
+        run: |
+          xcodebuild -version
+          xcrun --find clang
+          xcrun --find mig
+
+      - name: Fetch the ARMv7 XNU source
+        run: |
+          git clone --depth 1 --branch xnu/j1xlte-source https://github.com/zenkernelsam/xnu-S2I9100.git xnu-src
+          git -C xnu-src checkout c3c2da7d790db429f69c78b4bd3b80f7466efd94
+          git -C xnu-src apply "$GITHUB_WORKSPACE/xnu/patches/tb3-mt8127.patch"
+
+      - name: Build the MT8127 development kernel
+        shell: bash
+        run: |
+          set -o pipefail
+          cd xnu-src/xnu
+          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" NO_DTRACE_SYMS=YES MAKEJOBS=2 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
+
+      - name: Collect the kernel
+        if: always()
+        run: |
+          mkdir -p out
+          find xnu-src/xnu/BUILD -type f -name mach_kernel -exec cp {} out/mach_kernel \; 2>/dev/null || true
+          cp xnu-build.log out/ 2>/dev/null || true
+          ls -lah out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tb3-710f-xnu-build
+          path: out/
+          if-no-files-found: warn
+          retention-days: 7

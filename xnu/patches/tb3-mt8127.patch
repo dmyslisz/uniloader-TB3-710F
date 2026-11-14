@@ -1,0 +1,836 @@
+diff --git a/xnu/machine_configuration b/xnu/machine_configuration
+index 20e71bb..ab94daa 100644
+--- a/xnu/machine_configuration
++++ b/xnu/machine_configuration
+@@ -19,3 +19,6 @@ release arm s5l8930x
+ release arm s5l8920x
+ release arm s5l8922x
+ release arm omap3430_rx51
++debug arm mt8127_tb3
++development arm mt8127_tb3
++release arm mt8127_tb3
+diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
+index 0911b8a..e99e28f 100644
+--- a/xnu/makedefs/MakeInc.def
++++ b/xnu/makedefs/MakeInc.def
+@@ -121,7 +121,7 @@ endif
+ export SUPPORTED_I386_MACHINE_CONFIGS := DEFAULT
+ export SUPPORTED_X86_64_MACHINE_CONFIGS := DEFAULT
+ export SUPPORTED_ARM_MACHINE_CONFIGS := S5L8920X S5L8922X S5L8930X ARMPBA8 SUN4I OMAP3530 OMAP335X RASPBERRYPI \
+-					OMAP3430_RX51 ARM_RVEB_V6 S5L8720X S5L8900XRB MSM8960_TOUCHPAD IMX53 QSD8250_LEO EXYNOS3475_J1XLTE EXYNOS4210_I9100
++					OMAP3430_RX51 ARM_RVEB_V6 S5L8720X S5L8900XRB MSM8960_TOUCHPAD IMX53 QSD8250_LEO EXYNOS3475_J1XLTE EXYNOS4210_I9100 MT8127_TB3
+ export SUPPORTED_ARM64_MACHINE_CONFIGS := DEFAULT VEXPRESS 
+ 
+ #
+@@ -334,12 +334,14 @@ ARCH_FLAGS_ARM_ARMPBA8	= -arch armv7
+ ARCH_FLAGS_ARM_QSD8250_LEO = -arch armv7
+ ARCH_FLAGS_ARM_EXYNOS3475_J1XLTE = -arch armv7
+ ARCH_FLAGS_ARM_EXYNOS4210_I9100 = -arch armv7
++ARCH_FLAGS_ARM_MT8127_TB3 = -arch armv7
+ 
+ # Linux cross builds: clang has no -arch; use target triple + Mach-O output.
+ ifeq ($(UNAME_S),Linux)
+ ARCH_FLAGS_ARM_QSD8250_LEO = --target=armv7-apple-darwin -mthumb
+ ARCH_FLAGS_ARM_EXYNOS3475_J1XLTE = --target=armv7-apple-darwin -mthumb
+ ARCH_FLAGS_ARM_EXYNOS4210_I9100 = --target=armv7-apple-darwin -mthumb
++ARCH_FLAGS_ARM_MT8127_TB3 = --target=armv7-apple-darwin -mthumb
+ endif
+ ARCH_FLAGS_ARM_MSM8960_TOUCHPAD	= -arch armv7
+ ARCH_FLAGS_ARM_RASPBERRYPI	= -arch armv6
+diff --git a/xnu/osfmk/arm/PlatformConfigs.h b/xnu/osfmk/arm/PlatformConfigs.h
+index 9df0273..8262ca5 100644
+--- a/xnu/osfmk/arm/PlatformConfigs.h
++++ b/xnu/osfmk/arm/PlatformConfigs.h
+@@ -47,6 +47,11 @@
+ #define __ARM_PROCESSOR_CLASS_CORTEX_A8__ 1
+ #endif
+ 
++/* Lenovo TB3-710F MT8127 Cortex-A7: ARMv7-A compatibility path. */
++#ifdef BOARD_CONFIG_MT8127_TB3
++#define __ARM_PROCESSOR_CLASS_CORTEX_A8__ 1
++#endif
++
+ /* I9100 Exynos4210 Cortex-A9: ARMv7-A, reuse A8-compatible path for bring-up. */
+ #ifdef BOARD_CONFIG_EXYNOS4210_I9100
+ #define __ARM_PROCESSOR_CLASS_CORTEX_A8__ 1
+@@ -95,4 +100,4 @@
+ #define __ARM_PROCESSOR_CLASS_11JZFS__			1
+ #endif
+ 
+-#endif /* _PLATFORMCONFIGS_H_ */
+\ No newline at end of file
++#endif /* _PLATFORMCONFIGS_H_ */
+diff --git a/xnu/osfmk/arm/arm_vm_init.c b/xnu/osfmk/arm/arm_vm_init.c
+index 1a96217..eb693a5 100644
+--- a/xnu/osfmk/arm/arm_vm_init.c
++++ b/xnu/osfmk/arm/arm_vm_init.c
+@@ -367,6 +367,23 @@ void arm_vm_init(uint32_t mem_limit, boot_args * args)
+             l1[devs[idx]] = (devs[idx] << 20) | 0xC02;
+     }
+ #endif
++#ifdef BOARD_CONFIG_MT8127_TB3
++    /* MT8127 TB3-710F: preserve LK's scanout buffer and the SoC
++     * UART/GPT/GIC windows while replacing the bootstrap page tables.
++     * Physical addresses come from the Lenovo MT8127 kernel map and the
++     * observed /proc/iomem framebuffer reservation. */
++    {
++        volatile unsigned int *l1 =
++            (volatile unsigned int *)phys_to_virt(cpu_ttb);
++        const unsigned int devs[] = { 0x100, 0x102, 0x110 };
++        unsigned int idx;
++
++        for (idx = 0; idx < 2; idx++)
++            l1[0xBEE + idx] = (0xBEE00000u + idx * 0x100000u) | 0x402;
++        for (idx = 0; idx < sizeof(devs) / sizeof(devs[0]); idx++)
++            l1[devs[idx]] = (devs[idx] << 20) | 0xC02;
++    }
++#endif
+ 
+     identityBaseVA = gVirtBase;
+     identityCachePA = cpu_ttb + L1_SIZE;    /* After the first initial TTB. */
+diff --git a/xnu/osfmk/arm/armv/cache.s b/xnu/osfmk/arm/armv/cache.s
+index d6c6fcd..7752a2e 100644
+--- a/xnu/osfmk/arm/armv/cache.s
++++ b/xnu/osfmk/arm/armv/cache.s
+@@ -187,7 +187,7 @@ EnterARM(cache_initialize)
+ #endif
+ 
+     /* Enable L2 cache */
+-#if defined(_ARM_ARCH_7) && !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(_ARM_ARCH_7) && !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100) && !defined(BOARD_CONFIG_MT8127_TB3)
+     mrc     p15, 0, r0, c1, c0, 1
+     orr     r0, r0, #(1 << 1)
+ 
+diff --git a/xnu/osfmk/arm/commpage/commpage.c b/xnu/osfmk/arm/commpage/commpage.c
+index 5d17a74..178f30b 100644
+--- a/xnu/osfmk/arm/commpage/commpage.c
++++ b/xnu/osfmk/arm/commpage/commpage.c
+@@ -54,7 +54,7 @@ void commpage_update_active_cpus(void)
+ 
+     /* Lock the lock and update the global page value */
+     simple_lock(&commpage_active_cpus_lock);
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+     /* Original iOS7 libdispatch sizes its heap from LOGICAL_CPUS at +0x36.
+      * This reference machine runs exactly one present/active physical CPU. */
+     assert(processor_avail_count == 1);
+@@ -96,7 +96,7 @@ void commpage_populate(void)
+     /* Update CPU count */
+     simple_lock_init(&commpage_active_cpus_lock, 0);
+     commpage_update_active_cpus();
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+ #if BOARD_CONFIG_QSD8250_LEO
+     ml_cpu_info_t cpu_info;
+     ml_cpu_get_info(&cpu_info);
+@@ -105,7 +105,7 @@ void commpage_populate(void)
+ #elif BOARD_CONFIG_EXYNOS4210_I9100
+     *(uint16_t*)(_COMM_PAGE_BASE_ADDRESS + 0x26) = 32; /* Cortex-A9 cache-line bytes. */
+ #else
+-    *(uint16_t*)(_COMM_PAGE_BASE_ADDRESS + 0x26) = 64; /* Cortex-A8 cache-line bytes. */
++    *(uint16_t*)(_COMM_PAGE_BASE_ADDRESS + 0x26) = 64; /* Cortex-A7 cache-line bytes on J1/MT8127. */
+ #endif
+     printf("IOS7LAB commpage cpus: configured=%u active=%u physical=%u logical=%u\n",
+            *(uint8_t*)_COMM_PAGE_NCPUS,
+diff --git a/xnu/osfmk/arm/cpu.c b/xnu/osfmk/arm/cpu.c
+index 8fe7778..477502b 100644
+--- a/xnu/osfmk/arm/cpu.c
++++ b/xnu/osfmk/arm/cpu.c
+@@ -510,7 +510,7 @@ void get_cachetype_cp15()
+                 type == CACHE_SEP_CACHE) {
+                 sel = i << 1;
+                 __asm __volatile("mcr p15, 2, %0, c0, c0, 0"::"r"(sel));
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+                 __asm __volatile("isb sy" ::: "memory");
+ #endif
+                 __asm __volatile("mrc p15, 1, %0, c0, c0, 0":"=r"(csize));
+@@ -521,7 +521,7 @@ void get_cachetype_cp15()
+             if (type == CACHE_ICACHE || type == CACHE_SEP_CACHE) {
+                 sel = (i << 1) | 1;
+                 __asm __volatile("mcr p15, 2, %0, c0, c0, 0"::"r"(sel));
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+                 __asm __volatile("isb sy" ::: "memory");
+ #endif
+                 __asm __volatile("mrc p15, 1, %0, c0, c0, 0":"=r"(csize));
+@@ -530,7 +530,7 @@ void get_cachetype_cp15()
+             i++;
+             clevel >>= 3;
+         }
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+         sel = 0;
+         __asm __volatile("mcr p15, 2, %0, c0, c0, 0"::"r"(sel));
+         __asm __volatile("isb sy" ::: "memory");
+diff --git a/xnu/osfmk/arm/ios7_compat.h b/xnu/osfmk/arm/ios7_compat.h
+index 071c537..b13c6c2 100644
+--- a/xnu/osfmk/arm/ios7_compat.h
++++ b/xnu/osfmk/arm/ios7_compat.h
+@@ -2,7 +2,7 @@
+ #define _ARM_IOS7_COMPAT_H_
+ 
+ /* Selected software ABI adapters only. This never changes board identity. */
+-#define IOS7_COMPAT_PLATFORM (BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100)
++#define IOS7_COMPAT_PLATFORM (BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3)
+ 
+ #if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_EXYNOS4210_I9100
+ #include <pexpert/pexpert.h>
+@@ -19,7 +19,7 @@ static inline int ios7_compat_vmabi_enabled(void)
+     if (PE_parse_boot_argn("ios7lab_vmabi", &enabled, sizeof(enabled)))
+         return enabled == 1;
+     return 1;
+-#elif BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE
++#elif BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_MT8127_TB3
+     return 1;
+ #elif BOARD_CONFIG_ARMPBA8
+     int enabled = 0;
+diff --git a/xnu/osfmk/arm/locore.s b/xnu/osfmk/arm/locore.s
+index 0ee4c8b..154e104 100644
+--- a/xnu/osfmk/arm/locore.s
++++ b/xnu/osfmk/arm/locore.s
+@@ -67,6 +67,15 @@ mmu_reinitialize:
+      * Basically, all of SDRAM gets remapped to the virtual base.
+      */
+ 
++#ifdef BOARD_CONFIG_MT8127_TB3
++    /* Cortex-A7 requires ACTLR.SMP before enabling caches or performing
++     * cache/TLB maintenance. The MT8127 Android kernel sets this on entry. */
++    mrc     p15, 0, r4, c1, c0, 1
++    orr     r4, r4, #(1 << 6)
++    mcr     p15, 0, r4, c1, c0, 1
++    isb     sy
++#endif
++
+     /* Adjust DACR register. */
+     mov     r4, #0x1
+ 
+@@ -166,6 +175,36 @@ mmu_reinitialize:
+     orr     r8, r7, r6
+     str     r8, [r5]
+ #endif
++#ifdef BOARD_CONFIG_MT8127_TB3
++    /* MT8127: retain identity mappings for the bootloader framebuffer
++     * (1024x600 RGB565 at 0xBEE00000), UART0, GPT and Cortex-A7 GIC. */
++    LoadConstantToReg(0x402, r8)
++    LoadConstantToReg(0xBEE00000, r7)
++    mov r9, #2
++mt8127_identity_fb:
++    add r5, r4, r7, lsr#18
++    orr r2, r7, r8
++    str r2, [r5]
++    add r7, r7, #_1MB
++    subs r9, r9, #1
++    bne mt8127_identity_fb
++
++    LoadConstantToReg(0xC02, r8)
++    LoadConstantToReg(0x10000000, r7)
++    mov r9, #3
++mt8127_identity_io:
++    add r5, r4, r7, lsr#18
++    orr r2, r7, r8
++    str r2, [r5]
++    add r7, r7, #_1MB
++    subs r9, r9, #1
++    bne mt8127_identity_io
++
++    LoadConstantToReg(0x11000000, r7)
++    add r5, r4, r7, lsr#18
++    orr r2, r7, r8
++    str r2, [r5]
++#endif
+ 
+     mov     r7, pc, lsr#20
+     add     r5, r4, r7, lsl#2   /* Make the TTE offset */
+diff --git a/xnu/osfmk/arm/model_dep.c b/xnu/osfmk/arm/model_dep.c
+index 98b6971..9f91820 100644
+--- a/xnu/osfmk/arm/model_dep.c
++++ b/xnu/osfmk/arm/model_dep.c
+@@ -147,12 +147,13 @@ static void machine_conf(void)
+ {
+     machine_info.memory_size = (typeof(machine_info.memory_size)) mem_size;
+     machine_info.max_mem = (typeof(machine_info.max_mem)) max_mem;
+-#if defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+     /*
+-     * J1 bring-up (platform-specific, Exynos 3475):
++     * Single-CPU bring-up for J1, I9100, and the initial TB3 port;
++     * SMP startup is not implemented for these configurations yet.
+      * mc/commpage size per-CPU arrays from ml_get_max_cpus() (mcache.c:181,
+-     * uipc_mbuf.c:1541, pthread_synch.c:1174).  This SoC boots
+-     * uniprocessor; without this the count stays 0, those arrays become
++     * uipc_mbuf.c:1541, pthread_synch.c:1174). These bring-up profiles
++     * start only CPU0; without this the count stays 0, those arrays become
+      * zero-sized and mcache's MCACHE_CPU() writes past the allocation
+      * (cc_filled == NULL) -> kernel data abort in mcache_free_ext during
+      * bsd_init.  Mirrors hd2base/osfmk/arm/model_dep.c.
+diff --git a/xnu/osfmk/arm/pmap.c b/xnu/osfmk/arm/pmap.c
+index ad4b541..ff69190 100644
+--- a/xnu/osfmk/arm/pmap.c
++++ b/xnu/osfmk/arm/pmap.c
+@@ -202,7 +202,7 @@ uint32_t virt_begin, virt_end;  /* Virtual Address Space. */
+ uint32_t avail_start, vm_first_phys;
+ vm_page_t commpage;
+ 
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+ /* PC lab compatibility alias for original iOS 7 ARMv7 userspace. */
+ #define IOS7LAB_COMMPAGE_ALIAS 0xFFFF4000U
+ /* iOS<=6-era ARMv7 userspace reads CPU capabilities from the shared page at
+@@ -1697,7 +1697,7 @@ retry:
+     OSAddAtomic(1,&map->pm_stats.resident_count);pmap_ledger_credit(map,task_ledgers.phys_mem,PAGE_SIZE);
+     leo_mapping_wire(entry,wired);if(managed)leo_physical_wire_refresh(pn);
+     *pte=leo_pte_build(map,va,pn,prot,wired);if(managed)UNLOCK_PVH(pn);
+-#if defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+     /* J1: freshly paged-in executable user pages may hold stale I-cache
+      * lines (PIO-filled, never executed). Clean D + invalidate I so the
+      * first userspace fetch sees real code, not garbage. */
+@@ -2890,7 +2890,7 @@ void pmap_create_sharedpage(void)
+      * Memset it.
+      */
+     memset((void *) _COMM_PAGE_BASE_ADDRESS, 0x00, PAGE_SIZE);
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+     /* Retain the control ABI at 0x40000000 and expose the same data read-only
+      * at the address used by the original iOS 7 dyld. Offset 0x90 remains
+      * zero: Cortex-A8 must take mach_absolute_time's syscall fallback,
+@@ -3322,7 +3322,7 @@ kern_return_t pmap_enter_options(pmap_t pmap, vm_map_offset_t va, ppnum_t pa, vm
+ 
+         if (va == _COMM_PAGE_BASE_ADDRESS)
+             template_pte |= L2_ACCESS_USER;
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+         if (pmap == kernel_pmap && (va == IOS7LAB_COMMPAGE_ALIAS || va == IOS7LAB_COMMPAGE_ALIAS6))
+             template_pte |= L2_ACCESS_USER | L2_ACCESS_APX | L2_NX_BIT;
+ #endif
+@@ -3516,7 +3516,7 @@ kern_return_t pmap_enter_options(pmap_t pmap, vm_map_offset_t va, ppnum_t pa, vm
+      */
+     if (va == _COMM_PAGE_BASE_ADDRESS)
+         template_pte |= L2_ACCESS_USER;
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+     if (pmap == kernel_pmap && (va == IOS7LAB_COMMPAGE_ALIAS || va == IOS7LAB_COMMPAGE_ALIAS6))
+         template_pte |= L2_ACCESS_USER | L2_ACCESS_APX | L2_NX_BIT;
+ #endif
+@@ -3528,7 +3528,7 @@ kern_return_t pmap_enter_options(pmap_t pmap, vm_map_offset_t va, ppnum_t pa, vm
+ 
+     *(uint32_t *) pte = template_pte;
+     pte_sync(pte);
+-#if defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+     /* J1: a freshly faulted executable page may hold stale I-cache lines
+      * (PIO-filled, never executed). pte_sync above only cleans D for the
+      * walker. Sync D + invalidate I via the linear map so the first fetch
+diff --git a/xnu/osfmk/arm/traps_lo.s b/xnu/osfmk/arm/traps_lo.s
+index 0fb58ed..71c9960 100644
+--- a/xnu/osfmk/arm/traps_lo.s
++++ b/xnu/osfmk/arm/traps_lo.s
+@@ -113,7 +113,7 @@ undef_from_kernel:
+  * Call the software interrupt handler.
+  */
+ EnterARM(fleh_swi)
+-#if !(BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100)
++#if !(BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3)
+     cmn     r12, #3
+     beq     swi_trap_tb
+ #endif
+@@ -159,7 +159,7 @@ leo_frontier_entry_skip:
+     ldmfd   sp!, {r0,r1}
+ leo_frontier_entry_done:
+ #endif
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+     /* Original iOS ARMv7's -3 fallback returns the actual 64-bit clock.
+      * Use the normal saved-state/kernel-stack path and restore through
+      * swi_exit64, preserving both r0 and r1. */
+@@ -261,7 +261,7 @@ swi_trap_tb:
+     /* Fast return */
+     movs    pc, lr
+ 
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+ ios7lab_timebase:
+     blx     _mach_absolute_time
+     b       swi_exit64
+@@ -552,7 +552,7 @@ irq_restore_kernel:
+     ldr     r0, [r12, MACHINE_THREAD_PREEMPT_COUNT]
+ 
+     /* Preempt thread if necessary */
+-#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100)
++#if defined(BOARD_CONFIG_QSD8250_LEO) || defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) || defined(BOARD_CONFIG_EXYNOS4210_I9100) || defined(BOARD_CONFIG_MT8127_TB3)
+     cmp     r0, #0
+ #endif
+     bne     restore_kernel_context
+diff --git a/xnu/osfmk/mach/arm/vm_param.h b/xnu/osfmk/mach/arm/vm_param.h
+index 0e8ef05..ee49f90 100644
+--- a/xnu/osfmk/mach/arm/vm_param.h
++++ b/xnu/osfmk/mach/arm/vm_param.h
+@@ -60,7 +60,7 @@
+ #if defined (__arm__)
+ 
+ #define VM_MIN_ADDRESS		((vm_address_t) 0x00000000)
+-#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100
++#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO || BOARD_CONFIG_EXYNOS3475_J1XLTE || BOARD_CONFIG_EXYNOS4210_I9100 || BOARD_CONFIG_MT8127_TB3
+ /* This ARM pmap uses a 1 GiB TTBR0 split. Ordinary user allocations must
+  * stay below the kernel-owned commpage at 0x40000000. */
+ #define VM_MAX_ADDRESS		((vm_address_t) 0x40000000)
+diff --git a/xnu/pexpert/arm/common/pe_bringup.c b/xnu/pexpert/arm/common/pe_bringup.c
+index 56bb735..04d12df 100644
+--- a/xnu/pexpert/arm/common/pe_bringup.c
++++ b/xnu/pexpert/arm/common/pe_bringup.c
+@@ -50,6 +50,9 @@ void PE_early_puts(char *s)
+ #ifdef BOARD_CONFIG_QSD8250_LEO
+         extern void ios7leo_debug_putc(char);
+         ios7leo_debug_putc(*s); /* boundedRAM debug text, no monitor/UART/video */
++#elif defined(BOARD_CONFIG_MT8127_TB3)
++        extern void tb3_uart_putc(char);
++        tb3_uart_putc(*s); /* LK leaves MT8127 UART0 initialized for XNU. */
+ #else
+         PE_semihost_write_char(*s);
+ #endif
+diff --git a/xnu/pexpert/arm/mt8127_tb3_timer.c b/xnu/pexpert/arm/mt8127_tb3_timer.c
+new file mode 100644
+index 0000000..843c236
+--- /dev/null
++++ b/xnu/pexpert/arm/mt8127_tb3_timer.c
+@@ -0,0 +1,283 @@
++/*
++ * Lenovo TB3-710F / MT8127 timer bring-up.
++ *
++ * Uses GPT6 as a 64-bit, 13 MHz free-running timebase and GPT1 as the
++ * one-shot clock event.  The GPT interrupt is GIC INTID 144.  Register
++ * definitions and clock rate follow the Lenovo MT8127 kernel sources.
++ */
++#include <mach/mach_types.h>
++#include <mach/arm/thread_status.h>
++#include <pexpert/pexpert.h>
++#include <pexpert/arm/protos.h>
++#include <machine/machine_routines.h>
++#include <kern/debug.h>
++#include <kern/clock.h>
++#include "mt8127_tb3_timer.h"
++
++#if defined(BOARD_CONFIG_MT8127_TB3)
++#define TB3_GPT_PA             0x10008000U
++#define TB3_GIC_DIST_PA        0x10211000U
++#define TB3_GIC_CPU_PA         0x10212000U
++#define TB3_IO_BYTES           0x1000U
++
++#define GPT_IRQEN              0x000U
++#define GPT_IRQSTA             0x004U
++#define GPT_IRQACK             0x008U
++#define GPT1_BASE              0x010U
++#define GPT6_BASE              0x060U
++#define GPT_CON                0x000U
++#define GPT_CLK                0x004U
++#define GPT_CNT                0x008U
++#define GPT_CMP                0x00CU
++#define GPT_CNTH               0x018U
++#define GPT_CMPH               0x01CU
++#define GPT_CON_ENABLE         (1U << 0)
++#define GPT_CON_CLRCNT         (1U << 1)
++#define GPT_CON_OPMODE         (3U << 4)
++#define GPT_MODE_ONE_SHOT      0U
++#define GPT_MODE_FREE_RUN      3U
++
++#define GICD_CTLR              0x000U
++#define GICD_ISENABLER         0x100U
++#define GICD_ICENABLER         0x180U
++#define GICD_ICPENDR           0x280U
++#define GICD_IPRIORITYR        0x400U
++#define GICD_ITARGETSR         0x800U
++#define GICD_ICFGR             0xC00U
++#define GICC_CTLR              0x000U
++#define GICC_PMR               0x004U
++#define GICC_IAR               0x00CU
++#define GICC_EOIR              0x010U
++
++extern void rtc_configure(uint64_t hz);
++extern void rtclock_intr(arm_saved_state_t *regs);
++
++uint64_t clock_decrementer;
++static vm_offset_t tb3_gpt, tb3_gic_dist, tb3_gic_cpu;
++static uint32_t tb3_gic_ready, tb3_timebase_ready, tb3_timer_armed;
++static uint32_t tb3_irq_count, tb3_last_irq, tb3_last_vector;
++static uint32_t tb3_spurious_count;
++
++static uint32_t read_reg(vm_offset_t base, uint32_t offset)
++{
++    return *(volatile uint32_t *)(base + offset);
++}
++
++static void write_reg(vm_offset_t base, uint32_t offset, uint32_t value)
++{
++    *(volatile uint32_t *)(base + offset) = value;
++}
++
++static void drain_writes(void)
++{
++    __asm__ volatile("dsb sy" ::: "memory");
++}
++
++static uint64_t gpt6_read(void)
++{
++    uint32_t hi, lo, hi2;
++    do {
++        hi = read_reg(tb3_gpt, GPT6_BASE + GPT_CNTH);
++        lo = read_reg(tb3_gpt, GPT6_BASE + GPT_CNT);
++        hi2 = read_reg(tb3_gpt, GPT6_BASE + GPT_CNTH);
++    } while (hi != hi2);
++    return ((uint64_t)hi2 << 32) | lo;
++}
++
++static void gpt_reset(uint32_t base, uint32_t id, int is64)
++{
++    uint32_t irq = 1U << id;
++    write_reg(tb3_gpt, base + GPT_CON, 0U);
++    write_reg(tb3_gpt, GPT_IRQEN, read_reg(tb3_gpt, GPT_IRQEN) & ~irq);
++    write_reg(tb3_gpt, GPT_IRQACK, irq);
++    write_reg(tb3_gpt, base + GPT_CLK, 0U); /* SYS clock, divide by one. */
++    write_reg(tb3_gpt, base + GPT_CON, GPT_CON_CLRCNT);
++    write_reg(tb3_gpt, base + GPT_CMP, 0U);
++    if (is64)
++        write_reg(tb3_gpt, base + GPT_CMPH, 0U);
++}
++
++void TB3_interrupt_init(void)
++{
++    boolean_t was_enabled = ml_set_interrupts_enabled(FALSE);
++    uint32_t i, irq = TB3_GPT_IRQ;
++    uint32_t priority_offset, target_offset, config_offset;
++    uint32_t shift;
++
++    if (tb3_gic_ready) {
++        ml_set_interrupts_enabled(was_enabled);
++        return;
++    }
++    tb3_gic_dist = ml_io_map(TB3_GIC_DIST_PA, TB3_IO_BYTES);
++    tb3_gic_cpu = ml_io_map(TB3_GIC_CPU_PA, TB3_IO_BYTES);
++    tb3_gpt = ml_io_map(TB3_GPT_PA, 0x1000U);
++    if (!tb3_gic_dist || !tb3_gic_cpu || !tb3_gpt)
++        panic("TB3 GIC/GPT IO mapping failed");
++
++    write_reg(tb3_gic_dist, GICD_CTLR, 0U);
++    for (i = 0; i < 8; i++) {
++        write_reg(tb3_gic_dist, GICD_ICENABLER + i * 4, 0xffffffffU);
++        write_reg(tb3_gic_dist, GICD_ICPENDR + i * 4, 0xffffffffU);
++    }
++
++    priority_offset = GICD_IPRIORITYR + (irq / 4U) * 4U;
++    shift = (irq % 4U) * 8U;
++    write_reg(tb3_gic_dist, priority_offset,
++        (read_reg(tb3_gic_dist, priority_offset) & ~(0xffU << shift)) |
++        (0x80U << shift));
++
++    /* GPT1 is a level-sensitive SPI routed to CPU0. */
++    target_offset = GICD_ITARGETSR + (irq / 4U) * 4U;
++    shift = (irq % 4U) * 8U;
++    write_reg(tb3_gic_dist, target_offset,
++        (read_reg(tb3_gic_dist, target_offset) & ~(0xffU << shift)) |
++        (0x01U << shift));
++    config_offset = GICD_ICFGR + (irq / 16U) * 4U;
++    shift = (irq % 16U) * 2U;
++    write_reg(tb3_gic_dist, config_offset,
++        read_reg(tb3_gic_dist, config_offset) & ~(3U << shift));
++
++    write_reg(tb3_gic_cpu, GICC_PMR, 0xf0U);
++    write_reg(tb3_gic_cpu, GICC_CTLR, 1U);
++    write_reg(tb3_gic_dist, GICD_CTLR, 1U);
++    drain_writes();
++    tb3_gic_ready = 1U;
++    ml_set_interrupts_enabled(was_enabled);
++}
++
++void TB3_timebase_init(void)
++{
++    uint32_t i;
++    uint64_t before, after;
++    boolean_t was_enabled = ml_set_interrupts_enabled(FALSE);
++
++    if (!tb3_gic_ready)
++        panic("TB3 timebase before GIC initialization");
++    if (tb3_timebase_ready) {
++        ml_set_interrupts_enabled(was_enabled);
++        return;
++    }
++
++    /* GPT6 is the vendor kernel's 64-bit system counter. */
++    gpt_reset(GPT6_BASE, 5U, 1);
++    write_reg(tb3_gpt, GPT6_BASE + GPT_CON,
++        (GPT_MODE_FREE_RUN << 4) | GPT_CON_CLRCNT);
++    for (i = 0; i < 0x10000U && read_reg(tb3_gpt, GPT6_BASE + GPT_CNT); i++) { }
++    write_reg(tb3_gpt, GPT6_BASE + GPT_CON,
++        (GPT_MODE_FREE_RUN << 4) | GPT_CON_ENABLE);
++
++    before = gpt6_read();
++    after = before;
++    for (i = 0; i < 0x10000U && after == before; i++)
++        after = gpt6_read();
++    if (after == before)
++        panic("TB3 GPT6 counter did not advance");
++
++    tb3_timebase_ready = 1U;
++    clock_decrementer = TB3_GPT_HZ / 100U;
++    gPEClockFrequencyInfo.timebase_frequency_hz = TB3_GPT_HZ;
++    gPEClockFrequencyInfo.dec_clock_rate_hz = TB3_GPT_HZ;
++    rtc_configure(TB3_GPT_HZ);
++    TB3_timer_enabled(TRUE);
++    ml_set_interrupts_enabled(was_enabled);
++}
++
++void TB3_timer_enabled(int enable)
++{
++    uint32_t ticks, con;
++    uint32_t bit = 1U; /* GPT1, id 0. */
++    boolean_t was_enabled = ml_set_interrupts_enabled(FALSE);
++
++    if (!tb3_timebase_ready)
++        panic("TB3 timer before timebase initialization");
++    if (!enable) {
++        con = read_reg(tb3_gpt, GPT1_BASE + GPT_CON);
++        write_reg(tb3_gpt, GPT1_BASE + GPT_CON, con & ~GPT_CON_ENABLE);
++        write_reg(tb3_gpt, GPT_IRQEN, read_reg(tb3_gpt, GPT_IRQEN) & ~bit);
++        write_reg(tb3_gic_dist,
++            GICD_ICENABLER + (TB3_GPT_IRQ / 32U) * 4U,
++            1U << (TB3_GPT_IRQ % 32U));
++        write_reg(tb3_gpt, GPT_IRQACK, bit);
++        tb3_timer_armed = 0U;
++        drain_writes();
++        ml_set_interrupts_enabled(was_enabled);
++        return;
++    }
++
++    ticks = clock_decrementer > 0x7fffffffULL ? 0x7fffffffU :
++        (uint32_t)clock_decrementer;
++    if (ticks < 4U)
++        ticks = 4U;
++
++    con = read_reg(tb3_gpt, GPT1_BASE + GPT_CON);
++    write_reg(tb3_gpt, GPT1_BASE + GPT_CON, con & ~GPT_CON_ENABLE);
++    write_reg(tb3_gpt, GPT_IRQEN, read_reg(tb3_gpt, GPT_IRQEN) & ~bit);
++    write_reg(tb3_gpt, GPT_IRQACK, bit);
++    write_reg(tb3_gic_dist,
++        GICD_ICPENDR + (TB3_GPT_IRQ / 32U) * 4U,
++        1U << (TB3_GPT_IRQ % 32U));
++
++    write_reg(tb3_gpt, GPT1_BASE + GPT_CLK, 0U);
++    write_reg(tb3_gpt, GPT1_BASE + GPT_CMP, ticks);
++    write_reg(tb3_gpt, GPT1_BASE + GPT_CON, GPT_CON_CLRCNT);
++    write_reg(tb3_gpt, GPT1_BASE + GPT_CON, GPT_CON_ENABLE);
++    write_reg(tb3_gpt, GPT_IRQEN, read_reg(tb3_gpt, GPT_IRQEN) | bit);
++    write_reg(tb3_gic_dist,
++        GICD_ISENABLER + (TB3_GPT_IRQ / 32U) * 4U,
++        1U << (TB3_GPT_IRQ % 32U));
++    write_reg(tb3_gic_cpu, GICC_CTLR, 1U);
++    write_reg(tb3_gic_dist, GICD_CTLR, 1U);
++    drain_writes();
++    tb3_timer_armed = 1U;
++    ml_set_interrupts_enabled(was_enabled);
++}
++
++uint64_t TB3_get_timebase(void)
++{
++    return tb3_timebase_ready ? gpt6_read() : 0U;
++}
++
++uint64_t TB3_timer_value(void)
++{
++    uint32_t count, compare;
++    if (!tb3_timebase_ready || !tb3_timer_armed)
++        return 0U;
++    count = read_reg(tb3_gpt, GPT1_BASE + GPT_CNT);
++    compare = read_reg(tb3_gpt, GPT1_BASE + GPT_CMP);
++    return count < compare ? compare - count : 0U;
++}
++
++void TB3_handle_interrupt(void *context)
++{
++    uint32_t ack, irq, budget;
++    if (!tb3_gic_ready || !tb3_timebase_ready)
++        panic("TB3 IRQ before GIC/timebase initialization");
++
++    for (budget = 0; budget < 32U; budget++) {
++        ack = read_reg(tb3_gic_cpu, GICC_IAR);
++        irq = ack & 0x3ffU;
++        tb3_last_vector = irq;
++        if (irq >= 1020U) {
++            if (budget == 0U)
++                tb3_spurious_count++;
++            return;
++        }
++        if (irq != TB3_GPT_IRQ) {
++            write_reg(tb3_gic_cpu, GICC_EOIR, ack);
++            panic("TB3 unexpected IRQ %u", irq);
++        }
++
++        /* Clear the MediaTek GPT source before completing its GIC interrupt. */
++        write_reg(tb3_gpt, GPT_IRQACK, 1U);
++        write_reg(tb3_gic_cpu, GICC_EOIR, ack);
++        drain_writes();
++        tb3_last_irq = (uint32_t)gpt6_read();
++        tb3_irq_count++;
++        rtclock_intr((arm_saved_state_t *)context);
++#if !CONFIG_TICKLESS
++        TB3_timer_enabled(TRUE);
++#endif
++    }
++    panic("TB3 GIC IRQ drain budget exceeded");
++}
++#endif
+diff --git a/xnu/pexpert/arm/mt8127_tb3_timer.h b/xnu/pexpert/arm/mt8127_tb3_timer.h
+new file mode 100644
+index 0000000..81b594b
+--- /dev/null
++++ b/xnu/pexpert/arm/mt8127_tb3_timer.h
+@@ -0,0 +1,19 @@
++/* Lenovo TB3-710F / MediaTek MT8127 timer and interrupt interface. */
++#ifndef IOS7LAB_MT8127_TB3_TIMER_H
++#define IOS7LAB_MT8127_TB3_TIMER_H
++
++#include <mach/mach_types.h>
++
++#define TB3_GPT_HZ 13000000U
++#define TB3_GPT_IRQ 144U
++
++void TB3_interrupt_init(void);
++void TB3_timebase_init(void);
++void TB3_handle_interrupt(void *context);
++uint64_t TB3_get_timebase(void);
++uint64_t TB3_timer_value(void);
++void TB3_timer_enabled(int enable);
++
++extern uint64_t clock_decrementer;
++
++#endif
+diff --git a/xnu/pexpert/arm/pe_mt8127_tb3.c b/xnu/pexpert/arm/pe_mt8127_tb3.c
+new file mode 100644
+index 0000000..d7c9a9d
+--- /dev/null
++++ b/xnu/pexpert/arm/pe_mt8127_tb3.c
+@@ -0,0 +1,112 @@
++/* Lenovo TB3-710F / MediaTek MT8127 platform expert. */
++#if defined(BOARD_CONFIG_MT8127_TB3)
++#include <mach/mach_types.h>
++#include <pexpert/pexpert.h>
++#include <pexpert/arm/boot.h>
++#include <pexpert/arm/protos.h>
++#include <machine/machine_routines.h>
++#include <kern/debug.h>
++#include "mt8127_tb3_timer.h"
++
++#define TB3_UART_PA       0x11002000U
++#define TB3_UART_BYTES    0x1000U
++#define TB3_UART_THR      0x00U
++#define TB3_UART_RBR      0x00U
++#define TB3_UART_LSR      0x14U
++#define TB3_UART_LSR_DR   (1U << 0)
++#define TB3_UART_LSR_THRE (1U << 5)
++#define TB3_FB_PA         0xBEE00000U
++#define TB3_FB_BYTES      (1024U * 600U * 2U)
++#define TB3_FB_MAP_BYTES  0x200000U
++
++static vm_offset_t tb3_uart_map;
++static vm_offset_t tb3_fb_map;
++
++void tb3_uart_putc(char c)
++{
++    volatile uint32_t *uart;
++    uint32_t i;
++    if (tb3_uart_map)
++        uart = (volatile uint32_t *)tb3_uart_map;
++    else
++        uart = (volatile uint32_t *)TB3_UART_PA;
++    for (i = 0; i < 100000U; i++)
++        if (uart[TB3_UART_LSR / 4U] & TB3_UART_LSR_THRE)
++            break;
++    if (i < 100000U)
++        uart[TB3_UART_THR / 4U] = (uint32_t)(uint8_t)c;
++}
++
++static int tb3_uart_getc(void)
++{
++    volatile uint32_t *uart = (volatile uint32_t *)tb3_uart_map;
++    if (!uart || !(uart[TB3_UART_LSR / 4U] & TB3_UART_LSR_DR))
++        return -1;
++    return (int)(uart[TB3_UART_RBR / 4U] & 0xffU);
++}
++
++static void tb3_uart_init(void) { }
++
++static void tb3_framebuffer_init(void)
++{
++    boot_args *args = (boot_args *)PE_state.bootArgs;
++    PE_Video video;
++    volatile uint16_t *pixels;
++    uint32_t x, y;
++
++    if (!args || args->Video.v_baseAddr != TB3_FB_PA ||
++        args->Video.v_width != 1024U || args->Video.v_height != 600U ||
++        args->Video.v_rowBytes != 2048U || args->Video.v_depth != 16U)
++        panic("TB3 XNU framebuffer handoff mismatch");
++
++    tb3_fb_map = ml_io_map(TB3_FB_PA, TB3_FB_MAP_BYTES);
++    tb3_uart_map = ml_io_map(TB3_UART_PA, TB3_UART_BYTES);
++    if (!tb3_fb_map || !tb3_uart_map)
++        panic("TB3 framebuffer/UART mapping failed");
++
++    PE_state.video.v_baseAddr = tb3_fb_map;
++    PE_state.video.v_rowBytes = 2048U;
++    PE_state.video.v_width = 1024U;
++    PE_state.video.v_height = 600U;
++    PE_state.video.v_depth = 16U;
++
++    video = PE_state.video;
++    video.v_baseAddr = TB3_FB_PA | 1U;
++    video.v_baseAddrHigh = 0U;
++    video.v_offset = 0U;
++    video.v_length = TB3_FB_BYTES;
++    video.v_width = 1024U;
++    video.v_height = 600U;
++    video.v_rowBytes = 2048U;
++    video.v_depth = 16U;
++    video.v_scale = kPEScaleFactor1x;
++    initialize_screen(&video, kPETextMode);
++
++    /* Small post-console RGB565 marker: proves XNU, not just uniLoader,
++     * reached the MT8127 platform-expert framebuffer path. */
++    pixels = (volatile uint16_t *)tb3_fb_map;
++    for (y = 0; y < 8U; y++) {
++        for (x = 0; x < 96U; x++) {
++            uint16_t color = x < 32U ? 0xf800U :
++                             (x < 64U ? 0x07e0U : 0x001fU);
++            pixels[y * 1024U + x] = color;
++        }
++    }
++}
++
++void PE_init_SocSupport_stub(void)
++{
++    gPESocDispatch.uart_getc = tb3_uart_getc;
++    gPESocDispatch.uart_putc = tb3_uart_putc;
++    gPESocDispatch.uart_init = tb3_uart_init;
++    gPESocDispatch.interrupt_init = TB3_interrupt_init;
++    gPESocDispatch.timebase_init = TB3_timebase_init;
++    gPESocDispatch.handle_interrupt = TB3_handle_interrupt;
++    gPESocDispatch.get_timebase = TB3_get_timebase;
++    gPESocDispatch.timer_value = TB3_timer_value;
++    gPESocDispatch.timer_enabled = TB3_timer_enabled;
++    gPESocDispatch.framebuffer_init = tb3_framebuffer_init;
++
++    tb3_framebuffer_init();
++}
++#endif
+diff --git a/xnu/pexpert/conf/files.arm b/xnu/pexpert/conf/files.arm
+index 1d213d5..a7d4b9c 100644
+--- a/xnu/pexpert/conf/files.arm
++++ b/xnu/pexpert/conf/files.arm
+@@ -12,6 +12,8 @@ pexpert/arm/pe_qsd8250_leo.c standard
+ pexpert/arm/leo_qsd8250_timer.c standard
+ pexpert/arm/pe_exynos3475_j1.c standard
+ pexpert/arm/j1_timer.c standard
++pexpert/arm/pe_mt8127_tb3.c standard
++pexpert/arm/mt8127_tb3_timer.c standard
+ pexpert/arm/pe_exynos4210_i9100.c standard
+ pexpert/arm/i9100_timer.c standard
+ pexpert/arm/pe_omap3430.c		standard

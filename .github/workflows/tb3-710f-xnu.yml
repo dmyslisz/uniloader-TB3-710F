@@ -47,6 +47,16 @@ jobs:
           makefile.write_text(s)
           PY
           git -C xnu-src apply "$GITHUB_WORKSPACE/xnu/patches/tb3-mt8127.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("xnu-src/nokextd/IOS7NoKextd035.h")
+          s = p.read_text()
+          old = "#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100)"
+          new = old + " && !defined(BOARD_CONFIG_MT8127_TB3)"
+          if old not in s:
+              raise SystemExit("Expected no-kextd platform guard was not found")
+          p.write_text(s.replace(old, new, 1))
+          PY
 
       - name: Build the MT8127 development kernel
         shell: bash

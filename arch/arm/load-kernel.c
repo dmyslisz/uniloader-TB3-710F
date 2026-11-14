@@ -816,6 +816,14 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 
 void arch_load_kernel(void* kernel, void* dt, void* ramdisk)
 {
+#ifdef CONFIG_LENOVO_TB3_710F_FB_SMOKE
+	/* This profile stops in main() after drawing its framebuffer marker. */
+	(void)kernel;
+	(void)dt;
+	(void)ramdisk;
+	for (;;)
+		__asm__ __volatile__("wfi");
+#else
 #ifdef CONFIG_EMBED_XNU
 	arch_load_kernel_xnu(kernel, dt, ramdisk);
 #else
@@ -825,4 +833,6 @@ void arch_load_kernel(void* kernel, void* dt, void* ramdisk)
 #endif
 	load_kernel_and_jump(0, 0, dt, (void*)CONFIG_PAYLOAD_ENTRY);
 #endif
+#endif
 }
+

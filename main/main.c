@@ -39,6 +39,13 @@ void main(void* dt, void* kernel, void* ramdisk)
 
 	INITCALL(board_ops.ops.late_init);
 
+#ifdef CONFIG_LENOVO_TB3_710F_FB_SMOKE
+	/* First hardware pass: leave LK's display running with the marker up.
+	 * Do not touch the device tree, memory map, or any boot partition. */
+	for (;;)
+		__asm__ __volatile__("wfi");
+#endif
+
 	/* Framebuffer console is live now - dump handover environment. */
 	{
 		extern unsigned int entered_hyp;
@@ -87,3 +94,4 @@ void main(void* dt, void* kernel, void* ramdisk)
 	printk(KERN_EMERG, "Something wrong happened, we shouldn't be here. Hanging....\n");
 	HANG();
 }
+

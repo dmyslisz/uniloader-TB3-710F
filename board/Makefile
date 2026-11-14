@@ -7,6 +7,7 @@ lib-$(CONFIG_HUAWEI_AGASSI2) += huawei/board-agassi2.o
 lib-$(CONFIG_INFINIX_X6710) += infinix/board-x6710.o
 lib-$(CONFIG_ITEL_P682LPN) += itel/board-p682lpn.o
 lib-$(CONFIG_LENOVO_TB373FU) += lenovo/board-tb373fu.o
+lib-$(CONFIG_LENOVO_TB3_710F) += lenovo/board-tb3-710f.o
 lib-$(CONFIG_MOTOROLA_TUNDRA) += motorola/board-tundra.o
 lib-$(CONFIG_NOKIA_ESSENTIAL) += nokia/board-essential.o
 lib-$(CONFIG_NOTHING_PONG) += nothing/board-pong.o
@@ -52,3 +53,4 @@ lib-$(CONFIG_XIAOMI_GINKGO) += xiaomi/board-ginkgo.o
 lib-$(CONFIG_XIAOMI_MOON) += xiaomi/board-moon.o
 lib-$(CONFIG_XIAOMI_NEZHA) += xiaomi/board-nezha.o
 lib-$(CONFIG_ZTE_PINE) += zte/board-pine.o
+

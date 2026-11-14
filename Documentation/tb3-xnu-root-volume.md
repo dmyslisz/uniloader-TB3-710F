@@ -12,7 +12,7 @@ For the TB3 profile, store the image as a file on a FAT32 microSD card:
 
     IOS7/ROOTFS.HFS
 
-The loader's ARMv7 Mach-O XNU handoff sets tb3_sd=1. The TB3 XNU patch adds a
+The loader stages the kernel at 0x82000000, then copies it to the physical address matching the Mach-O link base (0x80001000) before handoff. uniLoader itself relocates to 0xBE000000 so the linked kernel location is free. It checks the Mach-O base against the boot memory map and stops if they do not match. The handoff sets tb3_sd=1. The TB3 XNU patch adds a
 read-only PIO transport for MSDC1, configures the board's four-bit SD pin mux,
 and locates this file on FAT32. The HFSX file is presented as block media to
 the existing HFS+ stack. Filesystem writes are held in a volatile copy-on-write

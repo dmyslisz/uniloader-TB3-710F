@@ -727,8 +727,8 @@ index 0000000..d7c9a9d
 +#define TB3_UART_LSR_DR   (1U << 0)
 +#define TB3_UART_LSR_THRE (1U << 5)
 +#define TB3_FB_PA         0xBEE00000U
-+#define TB3_FB_BYTES      (1024U * 600U * 2U)
-+#define TB3_FB_MAP_BYTES  0x200000U
++#define TB3_FB_BYTES      (1024U * 600U * 4U)
++#define TB3_FB_MAP_BYTES  0x01000000U
 +
 +static vm_offset_t tb3_uart_map;
 +static vm_offset_t tb3_fb_map;
@@ -762,12 +762,12 @@ index 0000000..d7c9a9d
 +{
 +    boot_args *args = (boot_args *)PE_state.bootArgs;
 +    PE_Video video;
-+    volatile uint16_t *pixels;
++#    volatile uint32_t *pixels;
 +    uint32_t x, y;
 +
 +    if (!args || args->Video.v_baseAddr != TB3_FB_PA ||
 +        args->Video.v_width != 1024U || args->Video.v_height != 600U ||
-+        args->Video.v_rowBytes != 2048U || args->Video.v_depth != 16U)
++        args->Video.v_rowBytes != 4096U || args->Video.v_depth != 32U)
 +        panic("TB3 XNU framebuffer handoff mismatch");
 +
 +    tb3_fb_map = ml_io_map(TB3_FB_PA, TB3_FB_MAP_BYTES);
@@ -776,10 +776,10 @@ index 0000000..d7c9a9d
 +        panic("TB3 framebuffer/UART mapping failed");
 +
 +    PE_state.video.v_baseAddr = tb3_fb_map;
-+    PE_state.video.v_rowBytes = 2048U;
++    PE_state.video.v_rowBytes = 4096U;
 +    PE_state.video.v_width = 1024U;
 +    PE_state.video.v_height = 600U;
-+    PE_state.video.v_depth = 16U;
++    PE_state.video.v_depth = 32U;
 +
 +    video = PE_state.video;
 +    video.v_baseAddr = TB3_FB_PA | 1U;
@@ -788,18 +788,18 @@ index 0000000..d7c9a9d
 +    video.v_length = TB3_FB_BYTES;
 +    video.v_width = 1024U;
 +    video.v_height = 600U;
-+    video.v_rowBytes = 2048U;
-+    video.v_depth = 16U;
++    video.v_rowBytes = 4096U;
++    video.v_depth = 32U;
 +    video.v_scale = kPEScaleFactor1x;
 +    initialize_screen(&video, kPETextMode);
 +
-+    /* Small post-console RGB565 marker: proves XNU, not just uniLoader,
++    /* Small post-console ARGB8888 marker: proves XNU, not just uniLoader,
 +     * reached the MT8127 platform-expert framebuffer path. */
-+    pixels = (volatile uint16_t *)tb3_fb_map;
++    pixels = (volatile uint32_t *)tb3_fb_map;
 +    for (y = 0; y < 8U; y++) {
 +        for (x = 0; x < 96U; x++) {
-+            uint16_t color = x < 32U ? 0xf800U :
-+                             (x < 64U ? 0x07e0U : 0x001fU);
++            uint32_t color = x < 32U ? 0xffff0000U :
++                             (x < 64U ? 0xff00ff00U : 0xff0000ffU);
 +            pixels[y * 1024U + x] = color;
 +        }
 +    }

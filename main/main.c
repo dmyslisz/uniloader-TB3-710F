@@ -42,8 +42,8 @@ void main(void* dt, void* kernel, void* ramdisk)
 #ifdef CONFIG_LENOVO_TB3_710F_FB_SMOKE
 	/* First hardware pass: leave LK's display running with the marker up.
 	 * Do not touch the device tree, memory map, or any boot partition. */
-	for (;;)
-		__asm__ __volatile__("wfi");
+	extern void tb3_smoke_wait(void);
+	tb3_smoke_wait();
 #endif
 
 	/* Framebuffer console is live now - dump handover environment. */

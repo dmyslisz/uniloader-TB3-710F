@@ -78,15 +78,18 @@ _start:
 	mcr	p15, 4, r1, c1, c1, 2	/* HCPTR: full coprocessor access */
 	mov	r1, #0
 	mcr	p15, 4, r1, c2, c0, 2	/* HTTBCR = 0 */
+	/* Record the exception-level transition even when framebuffer markers
+	 * are disabled for the Lenovo target. */
+	ldr	r1, =entered_hyp
+	mov	r3, #1
+	str	r3, [r1]
+	mov	r10, #1
+
 	#ifndef CONFIG_LENOVO_TB3_710F
 	movw	r2, #0x5000		/* keep painting - now in magenta slot */
 	movt	r2, #0x57E6
 	movw	r3, #0x00FF
 	movt	r3, #0xFFFF
-	ldr	r1, =entered_hyp
-	mov	r3, #1
-	str	r3, [r1]
-	mov	r10, #1
 	movw	r2, #0x5000
 	movt	r2, #0x57E6
 	movw	r3, #0x00FF
@@ -120,12 +123,15 @@ _start:
 	movw	r1, #0xFF00
 	movt	r1, #0xFF00		/* green 0xFF00FF00 */
 	bl	paint
+#endif /* !CONFIG_LENOVO_TB3_710F */
+
 	/* Where did S-Boot actually put us? */
 	adr	r7, _start
 	movw	r8, #:lower16:_start
 	movt	r8, #:upper16:_start
 	subs	r9, r7, r8		/* r9 = load_addr - TEXT_BASE */
 
+	#ifndef CONFIG_LENOVO_TB3_710F
 	/* B: BLUE @fb+0x1B000 = delta==0 (loaded at TEXT_BASE),
 	 * MAGENTA = delta!=0 (S-Boot used another address). */
 	movw	r0, #0xA000
@@ -146,6 +152,7 @@ _start:
 	movw	r1, #0x8080
 	movt	r1, #0xFF00		/* teal 0xFF008080 */
 	bl	paint
+	#endif /* !CONFIG_LENOVO_TB3_710F */
 
 	cpsid	if
 	mrc	p15, 0, r12, c1, c0, 0
@@ -154,6 +161,7 @@ _start:
 	mcr	p15, 0, r12, c1, c0, 0
 	/* NOTE: no c7,c7 / c8,c7 here - reserved on ARMv7, may trap. */
 
+	#ifndef CONFIG_LENOVO_TB3_710F
 	/* C: CYAN @fb+0x51000 = sanitize survived. */
 	movw	r0, #0x6000
 	movt	r0, #0x57E5
@@ -284,11 +292,13 @@ eng2:
 	blo	1b
 
 	/* E: GRAY @fb+0x120000 = bss cleared. */
+	#ifndef CONFIG_LENOVO_TB3_710F
 	movw	r0, #0x2000
 	movt	r0, #0x57E2
 	movw	r1, #0x8080
 	movt	r1, #0xFF80
 	bl	paint
+	#endif /* !CONFIG_LENOVO_TB3_710F */
 
 	/* main(dt, kernel, ramdisk) - .payload addresses adjusted by delta */
 	ldr	r0, =_dt_start

@@ -79,8 +79,8 @@ menu "Device Support"
 		default n
 		depends on MT8127
 		help
-		  Say Y for the ARMv7 Lenovo TB3-710F. Initial support is a
-		  framebuffer-only smoke test that preserves LK display setup.
+		  Say Y for the ARMv7 Lenovo TB3-710F, including the LK framebuffer
+		  smoke profile and the experimental embedded-XNU handoff profile.
 
 	config LENOVO_TB3_710F_FB_SMOKE
 		bool "Stop after the TB3-710F framebuffer smoke test"

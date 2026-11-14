@@ -111,11 +111,20 @@ void uart_puts(const char *s);
 #ifndef CONFIG_XNU_FB_HEIGHT
 #define CONFIG_XNU_FB_HEIGHT	800
 #endif
+#ifndef CONFIG_XNU_FB_DEPTH
+#define CONFIG_XNU_FB_DEPTH	32
+#endif
+#ifndef CONFIG_XNU_FB_ROW_BYTES
+#define CONFIG_XNU_FB_ROW_BYTES	0
+#endif
 #ifndef CONFIG_XNU_CMDLINE
 #define CONFIG_XNU_CMDLINE	"-v keepsyms=1 kprintf=1 debug=0x14e"
 #endif
 #ifndef CONFIG_XNU_CACHESLICE_TOP
 #define CONFIG_XNU_CACHESLICE_TOP	0x55E00000
+#endif
+#ifndef CONFIG_XNU_CACHESLICE_BASE
+#define CONFIG_XNU_CACHESLICE_BASE	0x54500000
 #endif
 
 static unsigned int align_up(unsigned int v, unsigned int a)
@@ -132,47 +141,65 @@ static unsigned int align_up(unsigned int v, unsigned int a)
 #define J1_LC_SEGMENT		0x1
 #define J1_LC_UNIXTHREAD	0x5
 #define J1_ARM_THREAD_STATE	1
+#define J1_MH_EXECUTE		2
+#define J1_CPU_TYPE_ARM		12
 
-static unsigned int j1_xnu_entry_offset(unsigned int load_pa,
-					unsigned int def)
+static unsigned int j1_macho_u32(const unsigned char *p)
 {
-	unsigned char *p = (unsigned char *)load_pa;
-	unsigned int base = 0, entry = 0, off;
-	unsigned int magic, ncmds;
+	return (unsigned int)p[0] | ((unsigned int)p[1] << 8) |
+	       ((unsigned int)p[2] << 16) | ((unsigned int)p[3] << 24);
+}
+
+static int j1_xnu_entry_offset(unsigned int load_pa, unsigned int image_size,
+			       unsigned int *entry_offset)
+{
+	const unsigned char *p = (const unsigned char *)load_pa;
+	unsigned int base = 0, entry = 0, off, commands_end;
+	unsigned int magic, ncmds, sizeofcmds;
 	int i;
 
-	magic = p[0] | (p[1] << 8) | (p[2] << 16) | ((unsigned)p[3] << 24);
-	if (magic != J1_MH_MAGIC)
-		return def;
-	ncmds = p[16] | (p[17] << 8) | (p[18] << 16) | ((unsigned)p[19] << 24);
+	if (image_size < 28)
+		return 0;
+	magic = j1_macho_u32(p);
+	if (magic != J1_MH_MAGIC || j1_macho_u32(p + 4) != J1_CPU_TYPE_ARM ||
+	    j1_macho_u32(p + 12) != J1_MH_EXECUTE)
+		return 0;
+	ncmds = j1_macho_u32(p + 16);
+	sizeofcmds = j1_macho_u32(p + 20);
+	if (!ncmds || ncmds > 128 || sizeofcmds > image_size - 28)
+		return 0;
+	commands_end = 28 + sizeofcmds;
 	off = 28;
 	for (i = 0; i < ncmds; i++) {
-		unsigned int cmd, csize = 0;
-		cmd = p[off] | (p[off + 1] << 8) | (p[off + 2] << 16) |
-		      ((unsigned)p[off + 3] << 24);
-		csize = p[off + 4] | (p[off + 5] << 8) | (p[off + 6] << 16) |
-			((unsigned)p[off + 7] << 24);
+		unsigned int cmd, csize;
+		if (off > commands_end || commands_end - off < 8)
+			return 0;
+		cmd = j1_macho_u32(p + off);
+		csize = j1_macho_u32(p + off + 4);
+		if (csize < 8 || csize > commands_end - off)
+			return 0;
 		if (cmd == J1_LC_SEGMENT) {
 			unsigned int vmaddr;
-			vmaddr = p[off + 24] | (p[off + 25] << 8) |
-				 (p[off + 26] << 16) | ((unsigned)p[off + 27] << 24);
+			if (csize < 56)
+				return 0;
+			vmaddr = j1_macho_u32(p + off + 24);
 			if (base == 0 || vmaddr < base)
 				base = vmaddr;
 		} else if (cmd == J1_LC_UNIXTHREAD) {
-			unsigned int flavor;
-			flavor = p[off + 8] | (p[off + 9] << 8) |
-				 (p[off + 10] << 16) | ((unsigned)p[off + 11] << 24);
-			if (flavor == J1_ARM_THREAD_STATE)
-				entry = p[off + 76] | (p[off + 77] << 8) |
-					(p[off + 78] << 16) | ((unsigned)p[off + 79] << 24);
+			unsigned int flavor, count;
+			if (csize < 80)
+				return 0;
+			flavor = j1_macho_u32(p + off + 8);
+			count = j1_macho_u32(p + off + 12);
+			if (flavor == J1_ARM_THREAD_STATE && count >= 17)
+				entry = j1_macho_u32(p + off + 76);
 		}
-		if (csize == 0)
-			break;
 		off += csize;
 	}
-	if (base && entry > base)
-		return entry - base;
-	return def;
+	if (!base || !entry || entry < base || entry - base >= image_size)
+		return 0;
+	*entry_offset = entry - base;
+	return 1;
 }
 
 void arch_load_kernel_xnu(void *kernel, void *dt, void *ramdisk)
@@ -227,7 +254,7 @@ void arch_load_kernel_xnu(void *kernel, void *dt, void *ramdisk)
 		 * kernel could not map/feed the tail pages.  Slide it below
 		 * the ramdisk decode (top: 0x54300000) but still inside xnu
 		 * RAM so every fed page stays mappable. */
-		unsigned int dst = 0x54500000;
+		unsigned int dst = CONFIG_XNU_CACHESLICE_BASE;
 		unsigned int dsc_pos = 0;
 		unsigned int i;
 
@@ -749,10 +776,15 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 
 	ba->Video.v_baseAddr = CONFIG_XNU_FB_BASE;
 	ba->Video.v_display = 0;
-	ba->Video.v_rowBytes = CONFIG_XNU_FB_WIDTH * 4;
+	#if CONFIG_XNU_FB_ROW_BYTES
+	ba->Video.v_rowBytes = CONFIG_XNU_FB_ROW_BYTES;
+	#else
+	ba->Video.v_rowBytes = CONFIG_XNU_FB_WIDTH *
+				       (CONFIG_XNU_FB_DEPTH / 8);
+	#endif
 	ba->Video.v_width = CONFIG_XNU_FB_WIDTH;
 	ba->Video.v_height = CONFIG_XNU_FB_HEIGHT;
-	ba->Video.v_depth = 32;
+	ba->Video.v_depth = CONFIG_XNU_FB_DEPTH;
 
 	ba->machineType = 0;
 	ba->deviceTreeP = (void *)(dt_pa - phys_base + virt_base);
@@ -800,11 +832,24 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 	}
 
 	{
-		unsigned int entry_off =
-			j1_xnu_entry_offset(load_pa, CONFIG_XNU_ENTRY_OFFSET);
+		unsigned int entry_off = 0;
+		int entry_parsed = j1_xnu_entry_offset(load_pa, ksize,
+						       &entry_off);
+		if (!entry_parsed) {
+#ifdef CONFIG_LENOVO_TB3_710F
+			printk(KERN_EMERG,
+			       "xnu: invalid ARM Mach-O entry; refusing fallback\n");
+			while (1)
+				__asm__ __volatile__("wfi");
+#else
+			entry_off = CONFIG_XNU_ENTRY_OFFSET;
+			printk(KERN_WARNING,
+			       "xnu: Mach-O entry parse failed, fallback offset %x\n",
+			       entry_off);
+#endif
+		}
 		printk(KERN_INFO, "xnu: entry offset %x (%s)\n", entry_off,
-		       entry_off == CONFIG_XNU_ENTRY_OFFSET ?
-		       "fallback" : "parsed");
+		       entry_parsed ? "parsed" : "fallback");
 		jump_to_xnu(load_pa + entry_off, ba_pa);
 	}
 

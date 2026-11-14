@@ -1,6 +1,6 @@
 # Lenovo TB3-710F / MT8127 XNU profile.
 # Requires a flat ARMv7 Mach-O at blob/Image, an Apple-format device tree at
-# blob/dtb, and a gzip-compressed HFS+ root image at blob/ramdisk.
+# blob/dtb, and IOS7/ROOTFS.HFS on a FAT32 microSD card.
 CONFIG_TEXT_BASE=0x80008000
 CONFIG_PAYLOAD_ENTRY=0x82000000
 CONFIG_RAMDISK_ENTRY=0x84000000
@@ -18,7 +18,7 @@ CONFIG_XNU_FB_WIDTH=1024
 CONFIG_XNU_FB_HEIGHT=600
 CONFIG_XNU_FB_DEPTH=32
 CONFIG_XNU_FB_ROW_BYTES=0x1000
-CONFIG_XNU_CMDLINE="-v keepsyms=1 debug=0x14e rd=md0"
+CONFIG_XNU_CMDLINE="-v keepsyms=1 debug=0x14e tb3_sd=1"
 CONFIG_XNU_CACHESLICE_TOP=0xBED00000
 CONFIG_XNU_CACHESLICE_BASE=0x90000000
 # No iOS dyld shared cache is embedded for the initial kernel bring-up.

@@ -2,8 +2,7 @@ name: TB3-710F MT8127 XNU ARMv7 build
 
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/tb3-xnu-loader]
+  pull_request:
     paths:
       - "xnu/patches/tb3-mt8127.patch"
       - "arch/arm/load-kernel.c"

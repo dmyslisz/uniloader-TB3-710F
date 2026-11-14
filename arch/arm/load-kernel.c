@@ -91,6 +91,9 @@ void uart_puts(const char *s);
 #ifndef CONFIG_XNU_PHYS_BASE
 #define CONFIG_XNU_PHYS_BASE	0x22000000
 #endif
+#ifndef CONFIG_XNU_LOAD_PA
+#define CONFIG_XNU_LOAD_PA	0
+#endif
 #ifndef CONFIG_XNU_VIRT_BASE
 #define CONFIG_XNU_VIRT_BASE	0x80000000
 #endif
@@ -182,6 +185,7 @@ static unsigned int j1_macho_u32(const unsigned char *p)
 }
 
 static int j1_xnu_entry_offset(unsigned int load_pa, unsigned int image_size,
+			       unsigned int *image_base,
 			       unsigned int *entry_offset)
 {
 	const unsigned char *p = (const unsigned char *)load_pa;
@@ -229,6 +233,7 @@ static int j1_xnu_entry_offset(unsigned int load_pa, unsigned int image_size,
 	}
 	if (!base || !entry || entry < base || entry - base >= image_size)
 		return 0;
+	*image_base = base;
 	*entry_offset = entry - base;
 	return 1;
 }
@@ -237,7 +242,9 @@ void arch_load_kernel_xnu(void *kernel, void *dt, void *ramdisk)
 {
 	unsigned int phys_base = CONFIG_XNU_PHYS_BASE;
 	unsigned int virt_base = CONFIG_XNU_VIRT_BASE;
-	unsigned int load_pa = CONFIG_PAYLOAD_ENTRY;
+	unsigned int load_pa = CONFIG_PAYLOAD_ENTRY; /* staging copy */
+	unsigned int kernel_pa = CONFIG_XNU_LOAD_PA ?
+		CONFIG_XNU_LOAD_PA : CONFIG_PAYLOAD_ENTRY;
 	unsigned int ksize;
 	unsigned int dtsize;
 	unsigned int dt_pa, ba_pa, top;
@@ -556,7 +563,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 	 * kernel statics written at runtime physically alias the DT/boot
 	 * args region if placed at file-end (observed: args fields turned
 	 * into pixel-color garbage like 0xFF000000). */
-	dt_pa = align_up(load_pa + ksize + 0x1000000, 4);
+	dt_pa = align_up(kernel_pa + ksize + 0x1000000, 4);
 	memcpy((void *)dt_pa, dt, dtsize);
 
 	/* boot_args behind the device tree. */
@@ -673,7 +680,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 				 * (below topOfKernelData, above BSS). */
 				{
 					unsigned int tp = align_up(
-					    load_pa + ksize + 0x800000, 4);
+					    kernel_pa + ksize + 0x800000, 4);
 					volatile unsigned int *tv =
 					    (volatile unsigned int *)tp;
 
@@ -917,7 +924,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			s += p[i];
 		printk(KERN_INFO,
 		       "xnu: layout pa=%08x ks=%u dt=%08x(%u) ba=%08x top=%08x\n",
-		       load_pa, ksize, dt_pa, dtsize, ba_pa, top);
+		       kernel_pa, ksize, dt_pa, dtsize, ba_pa, top);
 		printk(KERN_INFO,
 		       "xnu: ba#1 vb=%08x pb=%08x ms=%08x tk=%08x sum=%08x\n",
 		       ba->virtBase, ba->physBase, ba->memSize,
@@ -925,25 +932,51 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 	}
 
 	{
-		unsigned int entry_off = 0;
+		unsigned int entry_off = 0, image_base = 0;
 		int entry_parsed = j1_xnu_entry_offset(load_pa, ksize,
-						       &entry_off);
+						       &image_base, &entry_off);
 		if (!entry_parsed) {
 #ifdef CONFIG_LENOVO_TB3_710F
 			printk(KERN_EMERG,
-			       "xnu: invalid ARM Mach-O entry; refusing fallback\n");
+			       "xnu: invalid ARM Mach-O entry; refusing fallback\\n");
 			while (1)
 				__asm__ __volatile__("wfi");
 #else
 			entry_off = CONFIG_XNU_ENTRY_OFFSET;
 			printk(KERN_WARNING,
-			       "xnu: Mach-O entry parse failed, fallback offset %x\n",
+			       "xnu: Mach-O entry parse failed, fallback offset %x\\n",
 			       entry_off);
 #endif
 		}
-		printk(KERN_INFO, "xnu: entry offset %x (%s)\n", entry_off,
+		printk(KERN_INFO, "xnu: image base=%08x entry offset=%x (%s)\\n",
+		       image_base, entry_off,
 		       entry_parsed ? "parsed" : "fallback");
-		jump_to_xnu(load_pa + entry_off, ba_pa);
+		if (kernel_pa != load_pa) {
+#ifdef CONFIG_LENOVO_TB3_710F
+			unsigned int expected_pa;
+			uint64_t ram_end = (uint64_t)phys_base + CONFIG_XNU_MEMSIZE;
+			if (!entry_parsed || image_base < virt_base) {
+				printk(KERN_EMERG, "xnu: invalid Mach-O placement metadata\\n");
+				while (1) __asm__ __volatile__("wfi");
+			}
+			expected_pa = phys_base + (image_base - virt_base);
+			if (kernel_pa != expected_pa ||
+			    (uint64_t)kernel_pa + ksize > ram_end ||
+			    (uint64_t)load_pa + ksize > ram_end) {
+				printk(KERN_EMERG,
+				       "xnu: placement mismatch base=%08x expected=%08x load=%08x\\n",
+				       image_base, expected_pa, kernel_pa);
+				while (1) __asm__ __volatile__("wfi");
+			}
+#endif
+			/* All embedded inputs are staged/copied already. uniLoader runs
+			 * from high RAM, so this move can replace its original zImage
+			 * region and place XNU at the VM address used by the linker. */
+			memcpy((void *)kernel_pa, (const void *)load_pa, ksize);
+			printk(KERN_INFO, "xnu: relocated image to linked base %08x\\n",
+			       kernel_pa);
+		}
+		jump_to_xnu(kernel_pa + entry_off, ba_pa);
 	}
 
 	/* Not reached. */

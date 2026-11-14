@@ -66,7 +66,7 @@ jobs:
           s = s[:start] + '\tstrcpy(osversion, "10.6.0");' + s[end:]
           p.write_text(s)
           PY
-          make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
+          CC=gcc make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
           sudo mkdir -p "$TOOLROOT/bin"
           ld_candidate=$(find "$TOOLROOT/bin" -maxdepth 1 -type f -name '*ld' | head -n 1)

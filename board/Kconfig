@@ -439,6 +439,7 @@ menu "Device Specific Addresses"
 		hex "Payload Entry Address"
 		default 0x24000000 if SAMSUNG_J1XLTE
 		default 0x40001000 if SAMSUNG_I9100
+		default 0x82000000 if LENOVO_TB3_710F
 		default 0x50000000 if NOTHING_TETRIS
 		default 0x050000000 if SAMSUNG_J4LTE
 		default 0x60000000 if VOLLA_ALGIZ
@@ -448,6 +449,7 @@ menu "Device Specific Addresses"
 		hex "Ramdisk Entry Address"
 		default 0x22000000 if SAMSUNG_J1XLTE
 		default 0x41000000 if SAMSUNG_I9100
+		default 0x84000000 if LENOVO_TB3_710F
 		default 0x40000000 if NOTHING_TETRIS
 		default 0x51100000 if VOLLA_ALGIZ
 		default 0x48000000 if XIAOMI_BEGONIA

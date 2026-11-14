@@ -1,7 +1,5 @@
-warning: in the working copy of 'xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp', LF will be replaced by CRLF the next time Git touches it
-xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp:579: new blank line at EOF.
 diff --git a/xnu/bsd/kern/decmpfs.c b/xnu/bsd/kern/decmpfs.c
-index 7a9c5708057136bfe056d386fb94283cde8da5d6..397885b2ab7bad333b63abdd385ff93e98abe914 100644
+index 7a9c570..397885b 100644
 --- a/xnu/bsd/kern/decmpfs.c
 +++ b/xnu/bsd/kern/decmpfs.c
 @@ -45,6 +45,7 @@ char unregister_decmpfs_decompressor;
@@ -13,7 +11,7 @@ index 7a9c5708057136bfe056d386fb94283cde8da5d6..397885b2ab7bad333b63abdd385ff93e
  
  #pragma mark --- debugging ---
 diff --git a/xnu/bsd/sys/spawn_internal.h b/xnu/bsd/sys/spawn_internal.h
-index fe583389bc45ea0ee0ebb9952e713f29e8179e28..5528f88158eaa7f70849d4e1eb3e8fa6ad92a13b 100644
+index fe58338..5528f88 100644
 --- a/xnu/bsd/sys/spawn_internal.h
 +++ b/xnu/bsd/sys/spawn_internal.h
 @@ -144,6 +144,9 @@ typedef struct _posix_spawnattr {
@@ -27,7 +25,7 @@ index fe583389bc45ea0ee0ebb9952e713f29e8179e28..5528f88158eaa7f70849d4e1eb3e8fa6
  #define POSIX_SPAWN_APPTYPE_OSX_TAL	0x0001		/* it is a TAL app */
  #define POSIX_SPAWN_APPTYPE_OSX_WIDGET	0x0002		/* it is a widget */
 diff --git a/xnu/bsd/vfs/vfs_subr.c b/xnu/bsd/vfs/vfs_subr.c
-index 6e3332a31f003c959a887efed5889672af8a1791..a9895201a8e141c55077963a90fe5778e0c4c2dc 100644
+index 6e3332a..a989520 100644
 --- a/xnu/bsd/vfs/vfs_subr.c
 +++ b/xnu/bsd/vfs/vfs_subr.c
 @@ -963,7 +963,7 @@ vfs_rootmountalloc_internal(struct vfstable *vfsp, const char *devname)
@@ -40,20 +38,21 @@ index 6e3332a31f003c959a887efed5889672af8a1791..a9895201a8e141c55077963a90fe5778
          extern int ios7leo_cow_root_writable(unsigned,unsigned);
          if(ios7leo_cow_root_writable((unsigned)major(rootdev),(unsigned)minor(rootdev))) {
 diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp
-index 588c3853e7096c1a69d7bff1be23ab4c27fe8f3c..3f0ea8796099d5f43163da74850d7dc51491af94 100644
+index 588c385..202c152 100644
 --- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/AppleARMPE.cpp
-@@ -37,6 +37,9 @@ extern void ios7j1_register_sd(IOService *platform);
+@@ -37,6 +37,10 @@ extern void ios7j1_register_sd(IOService *platform);
  #if defined(BOARD_CONFIG_EXYNOS4210_I9100)
  extern "C" void ios7i9100_register_sd(IOService *platform);
  #endif
 +#if defined(BOARD_CONFIG_MT8127_TB3)
++extern void ios7leo_prepare_root_file();
 +extern "C" void tb3_mmc_register(IOService *platform);
 +#endif
  #if BOARD_CONFIG_ARMPBA8
  extern void ios7lab_register_display(IOService *platform);
  extern void ios7lab_register_hid_touch(IOService *platform);
-@@ -128,6 +131,10 @@ bool AppleARMPE::start(IOService * provider)
+@@ -128,6 +132,10 @@ bool AppleARMPE::start(IOService * provider)
          if (PE_parse_boot_argn("i9100fimdtest", &fimd_arg, sizeof(fimd_arg)) && fimd_arg)
              i9100_fimd_selftest();
      }
@@ -65,7 +64,7 @@ index 588c3853e7096c1a69d7bff1be23ab4c27fe8f3c..3f0ea8796099d5f43163da74850d7dc5
      return true;
  }
 diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp
-index bf9aa7f4a277fbaefa83daa99dac3c28190e4a10..c041d07d33ca889c804cf92f3be400334d6e28bb 100644
+index bf9aa7f..c041d07 100644
 --- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7LeoHFSFile.cpp
 @@ -1,4 +1,4 @@
@@ -85,10 +84,10 @@ index bf9aa7f4a277fbaefa83daa99dac3c28190e4a10..c041d07d33ca889c804cf92f3be40033
  {
 diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..4f370a49ad8f99b759af6cb34a5b5167343d320e
+index 0000000..0ec39ca
 --- /dev/null
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
-@@ -0,0 +1,579 @@
+@@ -0,0 +1,578 @@
 +/* Read-only PIO storage for Lenovo TB3-710F / MT8127 MSDC0 eMMC and MSDC1 SD.
 + * MSDC0 relies on the LK eMMC pin setup; MSDC1 configures the external SD pins.
 + * Opt in with tb3_emmc=1 or tb3_sd=1. This driver never writes to media.
@@ -667,9 +666,8 @@ index 0000000000000000000000000000000000000000..4f370a49ad8f99b759af6cb34a5b5167
 +    device->release();
 +}
 +#endif
-+
 diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c
-index 635b540496ccb5508ceda7f156dc2d67c6e91007..94328b7cc91749acd9f512d7e1ab0cb6487c2976 100644
+index 635b540..94328b7 100644
 --- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.c
 @@ -121,7 +121,9 @@ static int translate_raw(const struct fl32_image *im,const struct fl32_extent *e
@@ -684,7 +682,7 @@ index 635b540496ccb5508ceda7f156dc2d67c6e91007..94328b7cc91749acd9f512d7e1ab0cb6
  }
  int fl32_locate(const struct fl32_io *io,const struct fl32_limits *lim,struct fl32_work *w,struct fl32_extent *ext,uint32_t cap,struct fl32_image *out){
 diff --git a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h
-index 2c4d7623b626a2935ef48cfdf5752ee25fdf6cf1..383abb73c320f5e1215c3a8ed34e9b9df21408a0 100644
+index 2c4d762..383abb7 100644
 --- a/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/fat_locator.h
 @@ -33,7 +33,8 @@ struct fl32_image {
@@ -698,7 +696,7 @@ index 2c4d7623b626a2935ef48cfdf5752ee25fdf6cf1..383abb73c320f5e1215c3a8ed34e9b9d
  int fl32_locate(const struct fl32_io *,const struct fl32_limits *,struct fl32_work *,
                 struct fl32_extent *,uint32_t extent_capacity,struct fl32_image *);
 diff --git a/xnu/iokit/bsddev/IOKitBSDInit.cpp b/xnu/iokit/bsddev/IOKitBSDInit.cpp
-index bf607b26a12fbf241989f71a9945c15ba5849215..686dc5b6e8ea8b700922acfc7b9e152c12c0bf73 100644
+index bf607b2..686dc5b 100644
 --- a/xnu/iokit/bsddev/IOKitBSDInit.cpp
 +++ b/xnu/iokit/bsddev/IOKitBSDInit.cpp
 @@ -60,7 +60,7 @@ extern dev_t mdevlookup(int devid);
@@ -747,7 +745,7 @@ index bf607b26a12fbf241989f71a9945c15ba5849215..686dc5b6e8ea8b700922acfc7b9e152c
          OSString *tag = OSDynamicCast(OSString, service->getProperty("IOS7LeoRootFile"));
          if (tag && tag->isEqualTo("IOS7/ROOTFS.HFS"))
 diff --git a/xnu/iokit/conf/files.arm b/xnu/iokit/conf/files.arm
-index 1d89da737c3cd05855959c52de6ec28f2fb7a0a1..c0f87837a0efab18225c5f7fc5d74373200669a4 100644
+index 1d89da7..c0f8783 100644
 --- a/xnu/iokit/conf/files.arm
 +++ b/xnu/iokit/conf/files.arm
 @@ -58,3 +58,5 @@ iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/j1_sdmmc.c standard
@@ -757,7 +755,7 @@ index 1d89da737c3cd05855959c52de6ec28f2fb7a0a1..c0f87837a0efab18225c5f7fc5d74373
 +# Lenovo TB3-710F MT8127 MSDC0 eMMC (opt-in, read-only PIO)
 +iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp optional iokitcpp
 diff --git a/xnu/libkern/c++/OSRuntime.cpp b/xnu/libkern/c++/OSRuntime.cpp
-index af0b351fcad294a180d1f56ebebb8511a707fb0f..5d06b5593fd9a320c8e2294a7c2c4f15d8038e1b 100644
+index af0b351..5d06b55 100644
 --- a/xnu/libkern/c++/OSRuntime.cpp
 +++ b/xnu/libkern/c++/OSRuntime.cpp
 @@ -661,6 +661,45 @@ __asm__(".text\n.thumb\n"
@@ -807,7 +805,7 @@ index af0b351fcad294a180d1f56ebebb8511a707fb0f..5d06b5593fd9a320c8e2294a7c2c4f15
  #endif
  
 diff --git a/xnu/machine_configuration b/xnu/machine_configuration
-index 20e71bb7cac1d8782467c1423689503edb5cff01..ab94daa89dd9c08fe4314e1f716ee0405c38b0da 100644
+index 20e71bb..ab94daa 100644
 --- a/xnu/machine_configuration
 +++ b/xnu/machine_configuration
 @@ -19,3 +19,6 @@ release arm s5l8930x
@@ -818,7 +816,7 @@ index 20e71bb7cac1d8782467c1423689503edb5cff01..ab94daa89dd9c08fe4314e1f716ee040
 +development arm mt8127_tb3
 +release arm mt8127_tb3
 diff --git a/xnu/makedefs/MakeInc.def b/xnu/makedefs/MakeInc.def
-index 0911b8ad9a63fa417eefb7a74b1454dbeda512aa..e27e8a369c5b87f17242cb3330af871a9735fc76 100644
+index 0911b8a..e27e8a3 100644
 --- a/xnu/makedefs/MakeInc.def
 +++ b/xnu/makedefs/MakeInc.def
 @@ -121,7 +121,7 @@ endif
@@ -858,7 +856,7 @@ index 0911b8ad9a63fa417eefb7a74b1454dbeda512aa..e27e8a369c5b87f17242cb3330af871a
  # disable the stack protector that miscompiles this old ARM kernel.
  ifeq ($(UNAME_S),Linux)
 diff --git a/xnu/osfmk/arm/PlatformConfigs.h b/xnu/osfmk/arm/PlatformConfigs.h
-index 9df02730e8c36d9ea74e718e718daa7419bca116..8262ca57e8cf62bbac3ccc5c53d3298702de7628 100644
+index 9df0273..8262ca5 100644
 --- a/xnu/osfmk/arm/PlatformConfigs.h
 +++ b/xnu/osfmk/arm/PlatformConfigs.h
 @@ -47,6 +47,11 @@
@@ -881,7 +879,7 @@ index 9df02730e8c36d9ea74e718e718daa7419bca116..8262ca57e8cf62bbac3ccc5c53d32987
 \ No newline at end of file
 +#endif /* _PLATFORMCONFIGS_H_ */
 diff --git a/xnu/osfmk/arm/arm_vm_init.c b/xnu/osfmk/arm/arm_vm_init.c
-index 1a962173a00677c9ccca494b0ba8130b957c15b2..eb693a595737d6051d2ccc6c525e71b0ec6dd7c8 100644
+index 1a96217..eb693a5 100644
 --- a/xnu/osfmk/arm/arm_vm_init.c
 +++ b/xnu/osfmk/arm/arm_vm_init.c
 @@ -367,6 +367,23 @@ void arm_vm_init(uint32_t mem_limit, boot_args * args)
@@ -909,7 +907,7 @@ index 1a962173a00677c9ccca494b0ba8130b957c15b2..eb693a595737d6051d2ccc6c525e71b0
      identityBaseVA = gVirtBase;
      identityCachePA = cpu_ttb + L1_SIZE;    /* After the first initial TTB. */
 diff --git a/xnu/osfmk/arm/armv/cache.s b/xnu/osfmk/arm/armv/cache.s
-index d6c6fcdc4b5c89208d9179c4605baf366bbde315..7752a2e12c5110558f9f508f7f54d650cac8cdc8 100644
+index d6c6fcd..7752a2e 100644
 --- a/xnu/osfmk/arm/armv/cache.s
 +++ b/xnu/osfmk/arm/armv/cache.s
 @@ -187,7 +187,7 @@ EnterARM(cache_initialize)
@@ -922,7 +920,7 @@ index d6c6fcdc4b5c89208d9179c4605baf366bbde315..7752a2e12c5110558f9f508f7f54d650
      orr     r0, r0, #(1 << 1)
  
 diff --git a/xnu/osfmk/arm/commpage/commpage.c b/xnu/osfmk/arm/commpage/commpage.c
-index 5d17a749a3f12dc3136c2878d428c19e710e2279..178f30b88bea0ccf4304d74c2af69ae4d87bf117 100644
+index 5d17a74..178f30b 100644
 --- a/xnu/osfmk/arm/commpage/commpage.c
 +++ b/xnu/osfmk/arm/commpage/commpage.c
 @@ -54,7 +54,7 @@ void commpage_update_active_cpus(void)
@@ -953,7 +951,7 @@ index 5d17a749a3f12dc3136c2878d428c19e710e2279..178f30b88bea0ccf4304d74c2af69ae4
      printf("IOS7LAB commpage cpus: configured=%u active=%u physical=%u logical=%u\n",
             *(uint8_t*)_COMM_PAGE_NCPUS,
 diff --git a/xnu/osfmk/arm/cpu.c b/xnu/osfmk/arm/cpu.c
-index 8fe7778429bdd814842ed88e1379f855b203776f..477502b86b0a947a31c412a79a2a55e0ae026dd4 100644
+index 8fe7778..477502b 100644
 --- a/xnu/osfmk/arm/cpu.c
 +++ b/xnu/osfmk/arm/cpu.c
 @@ -510,7 +510,7 @@ void get_cachetype_cp15()
@@ -984,7 +982,7 @@ index 8fe7778429bdd814842ed88e1379f855b203776f..477502b86b0a947a31c412a79a2a55e0
          __asm __volatile("mcr p15, 2, %0, c0, c0, 0"::"r"(sel));
          __asm __volatile("isb sy" ::: "memory");
 diff --git a/xnu/osfmk/arm/ios7_compat.h b/xnu/osfmk/arm/ios7_compat.h
-index 071c53799ebc2a4268fc9f18e4c1c367b9ae1f30..b13c6c2bffededd28e8aa4a1f25057894a998e56 100644
+index 071c537..b13c6c2 100644
 --- a/xnu/osfmk/arm/ios7_compat.h
 +++ b/xnu/osfmk/arm/ios7_compat.h
 @@ -2,7 +2,7 @@
@@ -1006,7 +1004,7 @@ index 071c53799ebc2a4268fc9f18e4c1c367b9ae1f30..b13c6c2bffededd28e8aa4a1f2505789
  #elif BOARD_CONFIG_ARMPBA8
      int enabled = 0;
 diff --git a/xnu/osfmk/arm/locore.s b/xnu/osfmk/arm/locore.s
-index 0ee4c8bb04320370a2b1335f880b02f8582f2616..08507af6fae50b881aab47d2bc4f4eedbf91188a 100644
+index 0ee4c8b..08507af 100644
 --- a/xnu/osfmk/arm/locore.s
 +++ b/xnu/osfmk/arm/locore.s
 @@ -67,6 +67,15 @@ mmu_reinitialize:
@@ -1063,7 +1061,7 @@ index 0ee4c8bb04320370a2b1335f880b02f8582f2616..08507af6fae50b881aab47d2bc4f4eed
      mov     r7, pc, lsr#20
      add     r5, r4, r7, lsl#2   /* Make the TTE offset */
 diff --git a/xnu/osfmk/arm/model_dep.c b/xnu/osfmk/arm/model_dep.c
-index 98b6971dee7dc0a752c41b082d495568f2be4f8f..9f9182051bf2070a891a884196a65863ed9bc167 100644
+index 98b6971..9f91820 100644
 --- a/xnu/osfmk/arm/model_dep.c
 +++ b/xnu/osfmk/arm/model_dep.c
 @@ -147,12 +147,13 @@ static void machine_conf(void)
@@ -1085,7 +1083,7 @@ index 98b6971dee7dc0a752c41b082d495568f2be4f8f..9f9182051bf2070a891a884196a65863
       * (cc_filled == NULL) -> kernel data abort in mcache_free_ext during
       * bsd_init.  Mirrors hd2base/osfmk/arm/model_dep.c.
 diff --git a/xnu/osfmk/arm/pmap.c b/xnu/osfmk/arm/pmap.c
-index ad4b541c24febd8b85292aabc15427706bb9e3ed..ff6919018cd7cb0361412235cf6c9fa809f994ae 100644
+index ad4b541..ff69190 100644
 --- a/xnu/osfmk/arm/pmap.c
 +++ b/xnu/osfmk/arm/pmap.c
 @@ -202,7 +202,7 @@ uint32_t virt_begin, virt_end;  /* Virtual Address Space. */
@@ -1143,7 +1141,7 @@ index ad4b541c24febd8b85292aabc15427706bb9e3ed..ff6919018cd7cb0361412235cf6c9fa8
       * (PIO-filled, never executed). pte_sync above only cleans D for the
       * walker. Sync D + invalidate I via the linear map so the first fetch
 diff --git a/xnu/osfmk/arm/traps_lo.s b/xnu/osfmk/arm/traps_lo.s
-index 0fb58edd5e16e51978e8e998b1ab2d436f5db23a..71c996008fa884a208e9cbe1ef2a4948f6fc3c9e 100644
+index 0fb58ed..71c9960 100644
 --- a/xnu/osfmk/arm/traps_lo.s
 +++ b/xnu/osfmk/arm/traps_lo.s
 @@ -113,7 +113,7 @@ undef_from_kernel:
@@ -1183,7 +1181,7 @@ index 0fb58edd5e16e51978e8e998b1ab2d436f5db23a..71c996008fa884a208e9cbe1ef2a4948
  #endif
      bne     restore_kernel_context
 diff --git a/xnu/osfmk/mach/arm/vm_param.h b/xnu/osfmk/mach/arm/vm_param.h
-index 0e8ef0594bf6e0099e4836c3210e93191bd2b1b7..ee49f90e9434018d91ced8e3c4523298cc9e3d50 100644
+index 0e8ef05..ee49f90 100644
 --- a/xnu/osfmk/mach/arm/vm_param.h
 +++ b/xnu/osfmk/mach/arm/vm_param.h
 @@ -60,7 +60,7 @@
@@ -1196,7 +1194,7 @@ index 0e8ef0594bf6e0099e4836c3210e93191bd2b1b7..ee49f90e9434018d91ced8e3c4523298
   * stay below the kernel-owned commpage at 0x40000000. */
  #define VM_MAX_ADDRESS		((vm_address_t) 0x40000000)
 diff --git a/xnu/osfmk/mach/message.h b/xnu/osfmk/mach/message.h
-index 443daab3036c09ecc4643526dc661575183d1046..24817100f41e7fdfc4a3bfd1c8520753859b98bf 100644
+index 443daab..2481710 100644
 --- a/xnu/osfmk/mach/message.h
 +++ b/xnu/osfmk/mach/message.h
 @@ -359,6 +359,9 @@ typedef	struct
@@ -1210,7 +1208,7 @@ index 443daab3036c09ecc4643526dc661575183d1046..24817100f41e7fdfc4a3bfd1c8520753
  
  typedef struct
 diff --git a/xnu/pexpert/arm/common/pe_bringup.c b/xnu/pexpert/arm/common/pe_bringup.c
-index 56bb73534b2484a3ccde7604c525cea756bd1cb1..04d12df54f26a1a0f27db0335543268951f64034 100644
+index 56bb735..04d12df 100644
 --- a/xnu/pexpert/arm/common/pe_bringup.c
 +++ b/xnu/pexpert/arm/common/pe_bringup.c
 @@ -50,6 +50,9 @@ void PE_early_puts(char *s)
@@ -1225,7 +1223,7 @@ index 56bb73534b2484a3ccde7604c525cea756bd1cb1..04d12df54f26a1a0f27db03355432689
  #endif
 diff --git a/xnu/pexpert/arm/mt8127_tb3_timer.c b/xnu/pexpert/arm/mt8127_tb3_timer.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..843c23668ce4bd41dfa4184660c919518779d5cc
+index 0000000..843c236
 --- /dev/null
 +++ b/xnu/pexpert/arm/mt8127_tb3_timer.c
 @@ -0,0 +1,283 @@
@@ -1514,7 +1512,7 @@ index 0000000000000000000000000000000000000000..843c23668ce4bd41dfa4184660c91951
 +#endif
 diff --git a/xnu/pexpert/arm/mt8127_tb3_timer.h b/xnu/pexpert/arm/mt8127_tb3_timer.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..81b594b31c3a0953828ef1c7e63c5b74c664cdeb
+index 0000000..81b594b
 --- /dev/null
 +++ b/xnu/pexpert/arm/mt8127_tb3_timer.h
 @@ -0,0 +1,19 @@
@@ -1539,7 +1537,7 @@ index 0000000000000000000000000000000000000000..81b594b31c3a0953828ef1c7e63c5b74
 +#endif
 diff --git a/xnu/pexpert/arm/pe_mt8127_tb3.c b/xnu/pexpert/arm/pe_mt8127_tb3.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..3b5aa04a59d5e1f293317171fef17038b746c1ab
+index 0000000..3b5aa04
 --- /dev/null
 +++ b/xnu/pexpert/arm/pe_mt8127_tb3.c
 @@ -0,0 +1,112 @@
@@ -1656,7 +1654,7 @@ index 0000000000000000000000000000000000000000..3b5aa04a59d5e1f293317171fef17038
 +}
 +#endif
 diff --git a/xnu/pexpert/conf/files.arm b/xnu/pexpert/conf/files.arm
-index 1d213d5a43fd46b614d61bb321c94069e4f8f602..a7d4b9c48d3c6c6c04071b7852092a47a1a1cd74 100644
+index 1d213d5..a7d4b9c 100644
 --- a/xnu/pexpert/conf/files.arm
 +++ b/xnu/pexpert/conf/files.arm
 @@ -12,6 +12,8 @@ pexpert/arm/pe_qsd8250_leo.c standard
@@ -1668,3 +1666,4 @@ index 1d213d5a43fd46b614d61bb321c94069e4f8f602..a7d4b9c48d3c6c6c04071b7852092a47
  pexpert/arm/pe_exynos4210_i9100.c standard
  pexpert/arm/i9100_timer.c standard
  pexpert/arm/pe_omap3430.c		standard
+

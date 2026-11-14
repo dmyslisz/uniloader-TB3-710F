@@ -66,6 +66,15 @@ jobs:
           s = s[:start] + '\tstrcpy(osversion, "10.6.0");' + s[end:]
           p.write_text(s)
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("xnu-deps-linux/cctools-836/otool/print_objc.c")
+          s = p.read_text()
+          s = '#include <stdint.h>\n' + s
+          s = s.replace('objc_getClass(objc_class.name)', 'objc_getClass((const char *)(uintptr_t)objc_class.name)')
+          s = s.replace('objc_getMetaClass(objc_class.name)', 'objc_getMetaClass((const char *)(uintptr_t)objc_class.name)')
+          p.write_text(s)
+          PY
           CC=gcc make -C xnu-deps-linux -j2 CFLAGS='-std=gnu89 -m32 -O2 -pipe' all
           sudo make -C xnu-deps-linux DESTDIR="$TOOLROOT" install
           sudo mkdir -p "$TOOLROOT/bin"

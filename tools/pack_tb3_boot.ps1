@@ -5,6 +5,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$AndroidMagic = 'ANDROID!'
+$MtkMagic = '88-16-88-58'
+$MtkHeaderSize = 0x200
+$ZImageMagic = 0x016F2818
 
 function Read-U32([byte[]]$Bytes, [int]$Offset) {
     return [BitConverter]::ToUInt32($Bytes, $Offset)
@@ -24,12 +28,12 @@ function Copy-Range([byte[]]$Bytes, [long]$Offset, [long]$Length) {
 }
 
 $original = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $OriginalBoot))
-$kernel = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $LoaderZImage))
-if ($original.Length -lt 1632 -or [Text.Encoding]::ASCII.GetString($original, 0, 8) -ne 'ANDROID!') {
-    throw 'Input is not a supported Android boot image.'
+$zimage = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $LoaderZImage))
+if ($original.Length -lt 1632 -or [Text.Encoding]::ASCII.GetString($original, 0, 8) -ne $AndroidMagic) {
+    throw 'Input is not an Android boot image.'
 }
-if ($kernel.Length -le 0x28 -or (Read-U32 $kernel 0x24) -ne 0x016F2818) {
-    throw 'Loader file lacks the Linux zImage magic at offset 0x24.'
+if ($zimage.Length -le 0x28 -or (Read-U32 $zimage 0x24) -ne $ZImageMagic) {
+    throw 'Loader file lacks Linux zImage magic at offset 0x24.'
 }
 
 $page = Read-U32 $original 36
@@ -40,25 +44,45 @@ if ((Read-U32 $original 44) -ne 0) {
     throw 'Unknown nonzero legacy boot header field; refusing to repack.'
 }
 
-$kernelSize = Read-U32 $original 8
+$oldKernelSize = Read-U32 $original 8
 $ramdiskSize = Read-U32 $original 16
 $secondSize = Read-U32 $original 24
 $dtSize = Read-U32 $original 40
-$ramdiskOffset = $page + (Align-Up $kernelSize $page)
+if ($oldKernelSize -lt $MtkHeaderSize) {
+    throw 'Kernel component is smaller than the MTK wrapper.'
+}
+$mtkHeader = Copy-Range $original $page $MtkHeaderSize
+if ([BitConverter]::ToString($mtkHeader, 0, 4) -ne $MtkMagic) {
+    throw 'TB3-710F image lacks the expected MTK KERNEL wrapper.'
+}
+if ([Text.Encoding]::ASCII.GetString($mtkHeader, 8, 6) -ne 'KERNEL') {
+    throw 'MTK kernel wrapper name is not KERNEL.'
+}
+if ((Read-U32 $mtkHeader 4) -ne ($oldKernelSize - $MtkHeaderSize)) {
+    throw 'MTK inner kernel size does not match Android header.'
+}
+
+$ramdiskOffset = $page + (Align-Up $oldKernelSize $page)
 $secondOffset = $ramdiskOffset + (Align-Up $ramdiskSize $page)
 $dtOffset = $secondOffset + (Align-Up $secondSize $page)
 $ramdisk = Copy-Range $original $ramdiskOffset $ramdiskSize
 $second = Copy-Range $original $secondOffset $secondSize
 $dt = Copy-Range $original $dtOffset $dtSize
 
+$kernelSize = $MtkHeaderSize + $zimage.Length
+$wrappedKernel = [byte[]]::new([int]$kernelSize)
+[Array]::Copy($mtkHeader, 0, $wrappedKernel, 0, $MtkHeaderSize)
+[Array]::Copy($zimage, 0, $wrappedKernel, $MtkHeaderSize, $zimage.Length)
+[Array]::Copy([BitConverter]::GetBytes([uint32]$zimage.Length), 0, $wrappedKernel, 4, 4)
+
 $stream = [IO.MemoryStream]::new()
 $writer = [IO.BinaryWriter]::new($stream)
 $writer.Write((Copy-Range $original 0 $page))
 $writer.BaseStream.Position = 8
-$writer.Write([uint32]$kernel.Length)
+$writer.Write([uint32]$kernelSize)
 $writer.BaseStream.Position = $page
-$writer.Write($kernel)
-$writer.Write([byte[]]::new([int]((Align-Up $kernel.Length $page) - $kernel.Length)))
+$writer.Write($wrappedKernel)
+$writer.Write([byte[]]::new([int]((Align-Up $kernelSize $page) - $kernelSize)))
 $writer.Write($ramdisk)
 $writer.Write([byte[]]::new([int]((Align-Up $ramdiskSize $page) - $ramdiskSize)))
 $writer.Write($second)
@@ -75,5 +99,5 @@ $writer.Flush()
 $writer.Dispose()
 $stream.Dispose()
 
-Write-Host "Created $OutputBoot ($($original.Length) bytes). No device was flashed."
-
+Write-Host "Created $OutputBoot ($($original.Length) bytes). Preserved the MTK wrapper."
+Write-Host "No device was flashed."

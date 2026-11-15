@@ -1,0 +1,175 @@
+name: TB3-710F MT8127 XNU ARMv7 build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/tb3-xnu-loader]
+    paths:
+      - "xnu/patches/tb3-mt8127.patch"
+      - "arch/arm/load-kernel.c"
+      - "configs/tb3_710f_xnu_defconfig"
+      - "tools/gen_tb3_adt.py"
+      - "tools/pack_tb3_ramdisk.py"
+      - "tools/test_pack_tb3_ramdisk.py"
+      - "Documentation/tb3-xnu-root-volume.md"
+      - ".github/workflows/tb3-710f-xnu.yml"
+  pull_request:
+    paths:
+      - "xnu/patches/tb3-mt8127.patch"
+      - "arch/arm/load-kernel.c"
+      - "configs/tb3_710f_xnu_defconfig"
+      - "tools/gen_tb3_adt.py"
+      - "tools/pack_tb3_ramdisk.py"
+      - "tools/test_pack_tb3_ramdisk.py"
+      - "Documentation/tb3-xnu-root-volume.md"
+      - ".github/workflows/tb3-710f-xnu.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-xnu:
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      MACOSX_DEPLOYMENT_TARGET: 10.6
+      NO_DTRACE_SYMS: YES
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Apple build tools
+        run: |
+          xcode-select -p
+          xcrun --find clang
+          xcrun --find ld
+          xcrun --find mig
+
+      - name: Fetch and patch XNU
+        run: |
+          git init xnu-src
+          git -C xnu-src remote add origin https://github.com/zenkernelsam/xnu-S2I9100.git
+          git -C xnu-src fetch --depth 1 origin c3c2da7d790db429f69c78b4bd3b80f7466efd94
+          git -C xnu-src checkout FETCH_HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          makefile = Path("xnu-src/xnu/SETUP/md/Makefile")
+          s = makefile.read_text().replace("CFLAGS = -isysroot", "CFLAGS = -std=gnu89 -isysroot")
+          makefile.write_text(s)
+          source = Path("xnu-src/xnu/SETUP/md/md.c")
+          s = source.read_text().replace("#include <sys/stat.h>", "#include <sys/stat.h>" + chr(10) + "#include <fcntl.h>" + chr(10) + "#include <unistd.h>")
+          source.write_text(s)
+          makefile = Path("xnu-src/xnu/SETUP/md/Makefile")
+          s = makefile.read_text().replace("WARNFLAGS = -Wall", "WARNFLAGS = -Wall -Wno-error=implicit-function-declaration")
+          makefile.write_text(s)
+          PY
+          git -C xnu-src apply "$GITHUB_WORKSPACE/xnu/patches/tb3-mt8127.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("xnu-src/nokextd/IOS7NoKextd035.h")
+          s = p.read_text()
+          old = "#if !defined(BOARD_CONFIG_QSD8250_LEO) && !defined(BOARD_CONFIG_EXYNOS3475_J1XLTE) && !defined(BOARD_CONFIG_EXYNOS4210_I9100)"
+          new = old + " && !defined(BOARD_CONFIG_MT8127_TB3)"
+          if old not in s:
+              raise SystemExit("Expected no-kextd platform guard was not found")
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Build the MT8127 development kernel
+        shell: bash
+        env:
+          SDKROOT: ${{ github.workspace }}/xnu-src
+        run: |
+          set -o pipefail
+          cd xnu-src/xnu
+          export XNU_OBJROOT="$PWD/BUILD/obj"
+          mkdir -p BUILD
+          SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          export SDKROOT
+          make VERBOSE=YES TARGET_CONFIGS="DEVELOPMENT ARM MT8127_TB3" MAKEJOBS=--jobs=3 2>&1 | tee "$GITHUB_WORKSPACE/xnu-build.log"
+
+      - name: Validate ARMv7 Mach-O kernel
+        run: |
+          kernel="$(find xnu-src/xnu/BUILD -type f -name mach_kernel -print -quit)"
+          test -n "$kernel"
+          file "$kernel"
+          xcrun otool -hv "$kernel"
+
+      - name: Collect build outputs
+        if: always()
+        run: |
+          mkdir -p out
+          find xnu-src/xnu/BUILD -type f -name mach_kernel -exec cp {} out/mach_kernel \; 2>/dev/null || true
+          cp xnu-build.log out/ 2>/dev/null || true
+          ls -lah out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tb3-710f-xnu-build
+          path: out/
+          if-no-files-found: warn
+          retention-days: 7
+  build-uniloader:
+    needs: build-xnu
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tb3-710f-xnu-build
+          path: xnu-artifact
+
+      - name: Install ARMv7 build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Validate TB3 image preparation tools
+        run: |
+          python3 -m py_compile tools/gen_tb3_adt.py tools/pack_tb3_ramdisk.py tools/test_pack_tb3_ramdisk.py
+          python3 tools/test_pack_tb3_ramdisk.py
+
+      - name: Compile uniLoader with the XNU handoff path
+        run: |
+          mkdir -p blob
+          cp xnu-artifact/mach_kernel blob/Image
+          python3 tools/gen_tb3_adt.py blob/dtb
+          : > blob/ramdisk
+          : > blob/cacheslice
+          make ARCH=arm CROSS_COMPILE=arm-none-eabi- tb3_710f_xnu_defconfig
+          make ARCH=arm CROSS_COMPILE=arm-none-eabi- -j2
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          image = Path("uniLoader").read_bytes()
+          assert len(image) > 0x28, "uniLoader output is unexpectedly small"
+          assert struct.unpack_from("<I", image, 0x24)[0] == 0x016F2818, "missing Linux zImage magic"
+          print(f"XNU handoff loader size: {len(image)} bytes")
+          PY
+
+      - name: Collect early handoff artifact
+        run: |
+          mkdir -p out-handoff
+          cp uniLoader out-handoff/
+          cp xnu-artifact/mach_kernel out-handoff/
+          cp blob/dtb out-handoff/tb3-device-tree.adt
+          cp tools/pack_tb3_boot.py out-handoff/
+          cat > out-handoff/README.txt <<'EOF'
+          Early XNU handoff build for Lenovo TB3-710F.
+          Contains the compiled ARMv7 XNU Mach-O, uniLoader, and a minimal
+          Apple-format device tree for first-kernel bring-up.
+          It also includes pack_tb3_boot.py, which can build an Android boot image
+          from your read-only boot backup and uniLoader without flashing anything.
+          Run: python pack_tb3_boot.py lineage-boot-current.img uniLoader boot-xnu-test.img
+          This is not a working iOS image: no iOS HFS+ root filesystem or
+          dyld shared cache is included. Do not flash this artifact as-is.
+          EOF
+          ls -lah out-handoff
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tb3-710f-xnu-early-handoff
+          path: out-handoff/
+          retention-days: 7

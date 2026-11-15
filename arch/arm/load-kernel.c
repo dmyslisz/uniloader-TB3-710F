@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 /* Mirrors pexpert/pexpert/arm/boot.h of the darwin-on-arm XNU tree. */
-#define XNU_BOOT_LINE_LENGTH	2048
+#define XNU_BOOT_LINE_LENGTH	256
 
 struct xnu_boot_video {
 	uint32_t v_baseAddr;
@@ -35,8 +35,6 @@ struct xnu_boot_args {
 	void *deviceTreeP;	/* virtual address */
 	uint32_t deviceTreeLength;
 	char CommandLine[XNU_BOOT_LINE_LENGTH];
-	uint32_t RamdiskPA;	/* physical address of ramdisk image */
-	uint32_t RamdiskSize;	/* size in bytes */
 };
 
 extern unsigned long dtb_size;
@@ -93,6 +91,9 @@ void uart_puts(const char *s);
 #ifndef CONFIG_XNU_PHYS_BASE
 #define CONFIG_XNU_PHYS_BASE	0x22000000
 #endif
+#ifndef CONFIG_XNU_LOAD_PA
+#define CONFIG_XNU_LOAD_PA	0
+#endif
 #ifndef CONFIG_XNU_VIRT_BASE
 #define CONFIG_XNU_VIRT_BASE	0x80000000
 #endif
@@ -111,16 +112,58 @@ void uart_puts(const char *s);
 #ifndef CONFIG_XNU_FB_HEIGHT
 #define CONFIG_XNU_FB_HEIGHT	800
 #endif
+#ifndef CONFIG_XNU_FB_DEPTH
+#define CONFIG_XNU_FB_DEPTH	32
+#endif
+#ifndef CONFIG_XNU_FB_ROW_BYTES
+#define CONFIG_XNU_FB_ROW_BYTES	0
+#endif
 #ifndef CONFIG_XNU_CMDLINE
 #define CONFIG_XNU_CMDLINE	"-v keepsyms=1 kprintf=1 debug=0x14e"
 #endif
 #ifndef CONFIG_XNU_CACHESLICE_TOP
 #define CONFIG_XNU_CACHESLICE_TOP	0x55E00000
 #endif
+#ifndef CONFIG_XNU_CACHESLICE_BASE
+#define CONFIG_XNU_CACHESLICE_BASE	0x54500000
+#endif
 
 static unsigned int align_up(unsigned int v, unsigned int a)
 {
 	return (v + a - 1) & ~(a - 1);
+}
+
+static unsigned int xnu_ramdisk_capacity(unsigned int phys_base,
+					 unsigned int mem_size,
+					 unsigned int ramdisk_pa)
+{
+	uint64_t ram_end = (uint64_t)phys_base + mem_size;
+	if (ramdisk_pa < phys_base || (uint64_t)ramdisk_pa >= ram_end)
+		return 0;
+	return (unsigned int)(ram_end - ramdisk_pa);
+}
+
+static int append_hex_bootarg(char *cmdline, unsigned int capacity,
+			      const char *key, unsigned int value)
+{
+	static const char digits[] = "0123456789abcdef";
+	unsigned int used = (unsigned int)strlen(cmdline);
+	unsigned int keylen = (unsigned int)strlen(key);
+	unsigned int i;
+
+	/* space + key + "=0x" + 8 digits + NUL */
+	if (used + keylen + 13U > capacity)
+		return 0;
+	cmdline[used++] = ' ';
+	memcpy(cmdline + used, key, keylen);
+	used += keylen;
+	cmdline[used++] = '=';
+	cmdline[used++] = '0';
+	cmdline[used++] = 'x';
+	for (i = 0; i < 8; i++)
+		cmdline[used++] = digits[(value >> ((7U - i) * 4U)) & 0xfU];
+	cmdline[used] = 0;
+	return 1;
 }
 
 /*
@@ -132,58 +175,82 @@ static unsigned int align_up(unsigned int v, unsigned int a)
 #define J1_LC_SEGMENT		0x1
 #define J1_LC_UNIXTHREAD	0x5
 #define J1_ARM_THREAD_STATE	1
+#define J1_MH_EXECUTE		2
+#define J1_CPU_TYPE_ARM		12
 
-static unsigned int j1_xnu_entry_offset(unsigned int load_pa,
-					unsigned int def)
+static unsigned int j1_macho_u32(const unsigned char *p)
 {
-	unsigned char *p = (unsigned char *)load_pa;
-	unsigned int base = 0, entry = 0, off;
-	unsigned int magic, ncmds;
+	return (unsigned int)p[0] | ((unsigned int)p[1] << 8) |
+	       ((unsigned int)p[2] << 16) | ((unsigned int)p[3] << 24);
+}
+
+static int j1_xnu_entry_offset(unsigned int load_pa, unsigned int image_size,
+			       unsigned int *image_base,
+			       unsigned int *entry_offset)
+{
+	const unsigned char *p = (const unsigned char *)load_pa;
+	unsigned int base = 0, entry = 0, off, commands_end;
+	unsigned int magic, ncmds, sizeofcmds;
 	int i;
 
-	magic = p[0] | (p[1] << 8) | (p[2] << 16) | ((unsigned)p[3] << 24);
-	if (magic != J1_MH_MAGIC)
-		return def;
-	ncmds = p[16] | (p[17] << 8) | (p[18] << 16) | ((unsigned)p[19] << 24);
+	if (image_size < 28)
+		return 0;
+	magic = j1_macho_u32(p);
+	if (magic != J1_MH_MAGIC || j1_macho_u32(p + 4) != J1_CPU_TYPE_ARM ||
+	    j1_macho_u32(p + 12) != J1_MH_EXECUTE)
+		return 0;
+	ncmds = j1_macho_u32(p + 16);
+	sizeofcmds = j1_macho_u32(p + 20);
+	if (!ncmds || ncmds > 128 || sizeofcmds > image_size - 28)
+		return 0;
+	commands_end = 28 + sizeofcmds;
 	off = 28;
 	for (i = 0; i < ncmds; i++) {
-		unsigned int cmd, csize = 0;
-		cmd = p[off] | (p[off + 1] << 8) | (p[off + 2] << 16) |
-		      ((unsigned)p[off + 3] << 24);
-		csize = p[off + 4] | (p[off + 5] << 8) | (p[off + 6] << 16) |
-			((unsigned)p[off + 7] << 24);
+		unsigned int cmd, csize;
+		if (off > commands_end || commands_end - off < 8)
+			return 0;
+		cmd = j1_macho_u32(p + off);
+		csize = j1_macho_u32(p + off + 4);
+		if (csize < 8 || csize > commands_end - off)
+			return 0;
 		if (cmd == J1_LC_SEGMENT) {
 			unsigned int vmaddr;
-			vmaddr = p[off + 24] | (p[off + 25] << 8) |
-				 (p[off + 26] << 16) | ((unsigned)p[off + 27] << 24);
+			if (csize < 56)
+				return 0;
+			vmaddr = j1_macho_u32(p + off + 24);
 			if (base == 0 || vmaddr < base)
 				base = vmaddr;
 		} else if (cmd == J1_LC_UNIXTHREAD) {
-			unsigned int flavor;
-			flavor = p[off + 8] | (p[off + 9] << 8) |
-				 (p[off + 10] << 16) | ((unsigned)p[off + 11] << 24);
-			if (flavor == J1_ARM_THREAD_STATE)
-				entry = p[off + 76] | (p[off + 77] << 8) |
-					(p[off + 78] << 16) | ((unsigned)p[off + 79] << 24);
+			unsigned int flavor, count;
+			if (csize < 80)
+				return 0;
+			flavor = j1_macho_u32(p + off + 8);
+			count = j1_macho_u32(p + off + 12);
+			if (flavor == J1_ARM_THREAD_STATE && count >= 17)
+				entry = j1_macho_u32(p + off + 76);
 		}
-		if (csize == 0)
-			break;
 		off += csize;
 	}
-	if (base && entry > base)
-		return entry - base;
-	return def;
+	if (!base || !entry || entry < base || entry - base >= image_size)
+		return 0;
+	*image_base = base;
+	*entry_offset = entry - base;
+	return 1;
 }
 
 void arch_load_kernel_xnu(void *kernel, void *dt, void *ramdisk)
 {
 	unsigned int phys_base = CONFIG_XNU_PHYS_BASE;
 	unsigned int virt_base = CONFIG_XNU_VIRT_BASE;
-	unsigned int load_pa = CONFIG_PAYLOAD_ENTRY;
+	unsigned int load_pa = CONFIG_PAYLOAD_ENTRY; /* staging copy */
+	unsigned int kernel_pa = CONFIG_XNU_LOAD_PA ?
+		CONFIG_XNU_LOAD_PA : CONFIG_PAYLOAD_ENTRY;
 	unsigned int ksize;
 	unsigned int dtsize;
 	unsigned int dt_pa, ba_pa, top;
 	unsigned int rd_pa = 0;
+	unsigned int rd_size = 0;
+	unsigned int rd_capacity = 0;
 	/* 2048 bytes on the 4KB bootstrap stack squeezed the caller frame
 	 * past the stack bottom during the DSC loop's printk calls
 	 * (observed: cacheslice lz4 fails at stride/C-cadence, kernel and
@@ -227,7 +294,7 @@ void arch_load_kernel_xnu(void *kernel, void *dt, void *ramdisk)
 		 * kernel could not map/feed the tail pages.  Slide it below
 		 * the ramdisk decode (top: 0x54300000) but still inside xnu
 		 * RAM so every fed page stays mappable. */
-		unsigned int dst = 0x54500000;
+		unsigned int dst = CONFIG_XNU_CACHESLICE_BASE;
 		unsigned int dsc_pos = 0;
 		unsigned int i;
 
@@ -496,7 +563,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 	 * kernel statics written at runtime physically alias the DT/boot
 	 * args region if placed at file-end (observed: args fields turned
 	 * into pixel-color garbage like 0xFF000000). */
-	dt_pa = align_up(load_pa + ksize + 0x1000000, 4);
+	dt_pa = align_up(kernel_pa + ksize + 0x1000000, 4);
 	memcpy((void *)dt_pa, dt, dtsize);
 
 	/* boot_args behind the device tree. */
@@ -508,7 +575,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 	 * topOfKernelData so the VM page allocator never touches it.
 	 * The embedded blob is gzip-compressed (build.sh packs it). */
 	{
-		unsigned int rd_size = PAYLOAD_SYM(ramdisk_size);
+		rd_size = PAYLOAD_SYM(ramdisk_size);
 		unsigned int rd_expect = 0;
 		const unsigned char *rd = (const unsigned char *)ramdisk;
 
@@ -545,10 +612,18 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 				    "xnu: ramdisk lz4 %u bytes -> %08x cs=%08x\n",
 				    rd_size - 4, rd_pa, csum);
 			}
+			rd_capacity = xnu_ramdisk_capacity(phys_base,
+			    CONFIG_XNU_MEMSIZE, rd_pa);
+			if (!rd_capacity) {
+				printk(KERN_EMERG, "xnu: invalid LZ4 ramdisk address %08x\n",
+				       rd_pa);
+				while (1)
+					__asm__ __volatile__("wfi");
+			}
 			{
 				size_t rr = lz4_decompress(rd + 4,
 				    rd_size - 4, (void *)rd_pa,
-				    0x2000000);
+				    rd_capacity);
 
 				rd_size = (unsigned int)rr;
 				/* lz4_decompress returns the decoded byte
@@ -579,8 +654,6 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		    "xnu: vh=%08x sum=%08x (want 482b0004 cbcc81a2)\n",
 				    vh, sum);
 			}
-			ba->RamdiskPA = rd_pa;
-			ba->RamdiskSize = rd_size;
 			printk(KERN_INFO,
 			    "xnu: ramdisk lz4 -> %08x (%u)\n", rd_pa,
 			    rd_size);
@@ -588,14 +661,26 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		    rd[0] == 0x1F && rd[1] == 0x8B) {
 			unsigned char method = rd[2];
 
+#ifdef CONFIG_XNU_RAMDISK_PA
+			rd_pa = CONFIG_XNU_RAMDISK_PA;
+#else
 			rd_pa = align_up(ba_pa + sizeof(*ba), 4);
+#endif
+			rd_capacity = xnu_ramdisk_capacity(phys_base,
+			    CONFIG_XNU_MEMSIZE, rd_pa);
+			if (!rd_capacity) {
+				printk(KERN_EMERG, "xnu: invalid gzip ramdisk address %08x\n",
+				       rd_pa);
+				while (1)
+					__asm__ __volatile__("wfi");
+			}
 			if (method == 8) {
 				/* Huffman tables go into the unused gap
 				 * between the kernel image and the DT
 				 * (below topOfKernelData, above BSS). */
 				{
 					unsigned int tp = align_up(
-					    load_pa + ksize + 0x800000, 4);
+					    kernel_pa + ksize + 0x800000, 4);
 					volatile unsigned int *tv =
 					    (volatile unsigned int *)tp;
 
@@ -680,6 +765,13 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 				}
 				printk(KERN_INFO,
 				    "xnu: expect %u bytes out\n", rd_expect);
+				if (!rd_expect || rd_expect > rd_capacity) {
+					printk(KERN_EMERG,
+					    "xnu: gzip ramdisk size %u exceeds capacity %u\n",
+					    rd_expect, rd_capacity);
+					while (1)
+						__asm__ __volatile__("wfi");
+				}
 				rd_size = (unsigned int)inflate_raw(
 				    rd + hdr, rd_size - hdr,
 				    (void *)rd_pa, rd_expect);
@@ -710,8 +802,6 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		    "xnu: vh=%08x sum=%08x (want 482b0004 cbcc81a2)\n",
 					    vh, sum);
 				}
-				ba->RamdiskPA = rd_pa;
-				ba->RamdiskSize = rd_size;
 				printk(KERN_INFO,
 				    "xnu: ramdisk inflated -> %08x (%u)\n",
 				    rd_pa, rd_size);
@@ -720,10 +810,21 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			}
 		} else if (ramdisk && rd_size) {
 			/* Uncompressed fallback */
+#ifdef CONFIG_XNU_RAMDISK_PA
+			rd_pa = CONFIG_XNU_RAMDISK_PA;
+#else
 			rd_pa = align_up(ba_pa + sizeof(*ba), 4);
+#endif
+			rd_capacity = xnu_ramdisk_capacity(phys_base,
+			    CONFIG_XNU_MEMSIZE, rd_pa);
+			if (!rd_capacity || rd_size > rd_capacity) {
+				printk(KERN_EMERG,
+				    "xnu: uncompressed ramdisk size %u exceeds capacity %u\n",
+				    rd_size, rd_capacity);
+				while (1)
+					__asm__ __volatile__("wfi");
+			}
 			memcpy((void *)rd_pa, ramdisk, rd_size);
-			ba->RamdiskPA = rd_pa;
-			ba->RamdiskSize = rd_size;
 			printk(KERN_INFO,
 			    "xnu: ramdisk %u bytes -> %08x vh=%02x%02x\n",
 			       rd_size, rd_pa,
@@ -732,10 +833,22 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		}
 	}
 
+	/* Expose whole pages to XNU's physical memory-disk driver. */
+	if (rd_pa && rd_size) {
+		unsigned int rounded = align_up(rd_size, 0x1000U);
+		if (rounded > rd_capacity) {
+			printk(KERN_EMERG, "xnu: page-rounded ramdisk exceeds capacity\n");
+			while (1)
+				__asm__ __volatile__("wfi");
+		}
+		if (rounded > rd_size)
+			memset((void *)(rd_pa + rd_size), 0, rounded - rd_size);
+		rd_size = rounded;
+	}
 
 	{
 		unsigned int t1 = ba_pa + sizeof(*ba);
-		unsigned int t2 = rd_pa + ba->RamdiskSize;
+		unsigned int t2 = rd_pa + rd_size;
 
 		top = align_up(t1 > t2 ? t1 : t2, 1 << 20);
 	}
@@ -749,10 +862,15 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 
 	ba->Video.v_baseAddr = CONFIG_XNU_FB_BASE;
 	ba->Video.v_display = 0;
-	ba->Video.v_rowBytes = CONFIG_XNU_FB_WIDTH * 4;
+	#if CONFIG_XNU_FB_ROW_BYTES
+	ba->Video.v_rowBytes = CONFIG_XNU_FB_ROW_BYTES;
+	#else
+	ba->Video.v_rowBytes = CONFIG_XNU_FB_WIDTH *
+				       (CONFIG_XNU_FB_DEPTH / 8);
+	#endif
 	ba->Video.v_width = CONFIG_XNU_FB_WIDTH;
 	ba->Video.v_height = CONFIG_XNU_FB_HEIGHT;
-	ba->Video.v_depth = 32;
+	ba->Video.v_depth = CONFIG_XNU_FB_DEPTH;
 
 	ba->machineType = 0;
 	ba->deviceTreeP = (void *)(dt_pa - phys_base + virt_base);
@@ -783,6 +901,20 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 		}
 		printk(KERN_INFO, "xnu: cmdline='%s'\n", ba->CommandLine);
 	}
+#ifdef CONFIG_LENOVO_TB3_710F
+	if (rd_pa && rd_size) {
+		if (!append_hex_bootarg(ba->CommandLine,
+		    sizeof(ba->CommandLine), "tb3rd_pa", rd_pa) ||
+		    !append_hex_bootarg(ba->CommandLine,
+		    sizeof(ba->CommandLine), "tb3rd_size", rd_size)) {
+			printk(KERN_EMERG, "xnu: command line has no room for TB3 ramdisk arguments\n");
+			while (1)
+				__asm__ __volatile__("wfi");
+		}
+		printk(KERN_INFO, "xnu: ramdisk bootargs rd=md0 pa=%08x size=%u\n",
+		       rd_pa, rd_size);
+	}
+#endif
 
 	{
 		volatile unsigned int *p = (volatile unsigned int *)ba;
@@ -792,7 +924,7 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 			s += p[i];
 		printk(KERN_INFO,
 		       "xnu: layout pa=%08x ks=%u dt=%08x(%u) ba=%08x top=%08x\n",
-		       load_pa, ksize, dt_pa, dtsize, ba_pa, top);
+		       kernel_pa, ksize, dt_pa, dtsize, ba_pa, top);
 		printk(KERN_INFO,
 		       "xnu: ba#1 vb=%08x pb=%08x ms=%08x tk=%08x sum=%08x\n",
 		       ba->virtBase, ba->physBase, ba->memSize,
@@ -800,12 +932,51 @@ if ((unsigned int)(p - cs) + clen > cs_size)
 	}
 
 	{
-		unsigned int entry_off =
-			j1_xnu_entry_offset(load_pa, CONFIG_XNU_ENTRY_OFFSET);
-		printk(KERN_INFO, "xnu: entry offset %x (%s)\n", entry_off,
-		       entry_off == CONFIG_XNU_ENTRY_OFFSET ?
-		       "fallback" : "parsed");
-		jump_to_xnu(load_pa + entry_off, ba_pa);
+		unsigned int entry_off = 0, image_base = 0;
+		int entry_parsed = j1_xnu_entry_offset(load_pa, ksize,
+						       &image_base, &entry_off);
+		if (!entry_parsed) {
+#ifdef CONFIG_LENOVO_TB3_710F
+			printk(KERN_EMERG,
+			       "xnu: invalid ARM Mach-O entry; refusing fallback\n");
+			while (1)
+				__asm__ __volatile__("wfi");
+#else
+			entry_off = CONFIG_XNU_ENTRY_OFFSET;
+			printk(KERN_WARNING,
+			       "xnu: Mach-O entry parse failed, fallback offset %x\n",
+			       entry_off);
+#endif
+		}
+		printk(KERN_INFO, "xnu: image base=%08x entry offset=%x (%s)\n",
+		       image_base, entry_off,
+		       entry_parsed ? "parsed" : "fallback");
+		if (kernel_pa != load_pa) {
+#ifdef CONFIG_LENOVO_TB3_710F
+			unsigned int expected_pa;
+			uint64_t ram_end = (uint64_t)phys_base + CONFIG_XNU_MEMSIZE;
+			if (!entry_parsed || image_base < virt_base) {
+				printk(KERN_EMERG, "xnu: invalid Mach-O placement metadata\n");
+				while (1) __asm__ __volatile__("wfi");
+			}
+			expected_pa = phys_base + (image_base - virt_base);
+			if (kernel_pa != expected_pa ||
+			    (uint64_t)kernel_pa + ksize > ram_end ||
+			    (uint64_t)load_pa + ksize > ram_end) {
+				printk(KERN_EMERG,
+				       "xnu: placement mismatch base=%08x expected=%08x load=%08x\n",
+				       image_base, expected_pa, kernel_pa);
+				while (1) __asm__ __volatile__("wfi");
+			}
+#endif
+			/* All embedded inputs are staged/copied already. uniLoader runs
+			 * from high RAM, so this move can replace its original zImage
+			 * region and place XNU at the VM address used by the linker. */
+			memcpy((void *)kernel_pa, (const void *)load_pa, ksize);
+			printk(KERN_INFO, "xnu: relocated image to linked base %08x\n",
+			       kernel_pa);
+		}
+		jump_to_xnu(kernel_pa + entry_off, ba_pa);
 	}
 
 	/* Not reached. */

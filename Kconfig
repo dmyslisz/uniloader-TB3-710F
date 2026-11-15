@@ -88,6 +88,14 @@ config XNU_PHYS_BASE
 		hex "Physical base XNU is told about (kernel loads at +0x1000)"
 		default 0x22000000
 
+config XNU_LOAD_PA
+	hex "Physical address where the linked XNU Mach-O is placed"
+	default 0x0
+	help
+	  Zero keeps the current payload staging address. Otherwise uniLoader
+	  stages the image separately, then copies it here before handoff so
+	  the kernel can run at its linked address without rebasing.
+
 config XNU_VIRT_BASE
 		hex "Virtual base XNU maps physical memory at"
 		default 0x80000000
@@ -108,6 +116,14 @@ config XNU_FB_HEIGHT
 		int "Framebuffer scanout height in pixels"
 		default 960
 
+	config XNU_FB_DEPTH
+		int "Framebuffer bits per pixel"
+		default 32
+
+	config XNU_FB_ROW_BYTES
+		hex "Framebuffer bytes per row (0 = width × depth / 8)"
+		default 0
+
 config XNU_CMDLINE
 		string "Kernel command line (boot args)"
 		default "-v keepsyms=1 kprintf=1 debug=0x14e"
@@ -120,6 +136,13 @@ config XNU_CACHESLICE_TOP
 		  the kernel's RAM window (CONFIG_XNU_MEMSIZE) or the kernel
 		  cannot map/feed the tail pages.  Larger amounts of RAM (e.g.
 		  QEMU virt) raise this.
+
+config XNU_CACHESLICE_BASE
+		hex "Physical base for unpacked dyld shared-cache slices"
+		default 0x54500000
+		help
+		  Must lie inside CONFIG_XNU_PHYS_BASE..CONFIG_XNU_PHYS_BASE plus
+		  CONFIG_XNU_MEMSIZE and below XNU_CACHESLICE_TOP.  Set this per board.
 
 config XNU_EMBED_CACHESLICE
 	bool "Embed the dyld shared cache in the loader image"
@@ -152,3 +175,4 @@ source "lib/Kconfig"
 source "soc/Kconfig"
 
 source "board/Kconfig"
+

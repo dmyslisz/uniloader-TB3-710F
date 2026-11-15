@@ -87,7 +87,7 @@ new file mode 100644
 index 0000000..112b6ed
 --- /dev/null
 +++ b/xnu/iokit/Drivers/KernelBuiltIn/ARM/AppleARMPlatform/IOS7TB3MSDC.cpp
-@@ -0,0 +1,697 @@
+@@ -0,0 +1,695 @@
 +/* Read-only PIO storage for Lenovo TB3-710F / MT8127 MSDC0 eMMC and MSDC1 SD.
 + * MSDC0 relies on the LK eMMC pin setup; MSDC1 configures the external SD pins.
 + * Opt in with tb3_emmc=1 or tb3_sd=1. This driver never writes to media.
@@ -766,11 +766,9 @@ index 0000000..112b6ed
 +
 +    IOS7TB3MSDC *device = new IOS7TB3MSDC;
 +    if (!device) { IOLog("TB3 MSDC: allocation failed\n"); return; }
++    if (sdEnabled) device->selectSDCard();
 +    bool attached = false, success = false;
-+    if (device->init()) {
-+        if (sdEnabled) device->selectSDCard();
-+        attached = device->attach(platform);
-+    }
++    if (device->init()) attached = device->attach(platform);
 +    if (attached && device->start(platform)) {
 +        OSObject *decoded = OSUnserializeXML(ios7labStoragePersonalities);
 +        OSArray *drivers = OSDynamicCast(OSArray, decoded);
@@ -1729,8 +1727,8 @@ index 0000000..3b5aa04
 +
 +    PE_state.video.v_baseAddr = tb3_fb_map;
 +    PE_state.video.v_rowBytes = 4096U;
-+    PE_state.video.v_width = 1024U;
-+    PE_state.video.v_height = 600U;
++    PE_state.video.v_width = 600U;
++    PE_state.video.v_height = 1024U;
 +    PE_state.video.v_depth = 32U;
 +
 +    video = PE_state.video;
@@ -1738,8 +1736,8 @@ index 0000000..3b5aa04
 +    video.v_baseAddrHigh = 0U;
 +    video.v_offset = 0U;
 +    video.v_length = TB3_FB_BYTES;
-+    video.v_width = 1024U;
-+    video.v_height = 600U;
++    video.v_width = 600U;
++    video.v_height = 1024U;
 +    video.v_rowBytes = 4096U;
 +    video.v_depth = 32U;
 +    video.v_scale = kPEScaleFactor1x;
@@ -1748,10 +1746,10 @@ index 0000000..3b5aa04
 +    /* Small post-console ARGB8888 marker: proves XNU, not just uniLoader,
 +     * reached the MT8127 platform-expert framebuffer path. */
 +    pixels = (volatile uint32_t *)tb3_fb_map;
-+    for (y = 0; y < 8U; y++) {
-+        for (x = 0; x < 96U; x++) {
-+            uint32_t color = x < 32U ? 0xffff0000U :
-+                             (x < 64U ? 0xff00ff00U : 0xff0000ffU);
++    for (y = 0; y < 2U; y++) {
++        for (x = 0; x < 24U; x++) {
++            uint32_t color = x < 8U ? 0xffff0000U :
++                             (x < 16U ? 0xff00ff00U : 0xff0000ffU);
 +            pixels[y * 1024U + x] = color;
 +        }
 +    }
@@ -1786,4 +1784,219 @@ index 1d213d5..a7d4b9c 100644
  pexpert/arm/pe_exynos4210_i9100.c standard
  pexpert/arm/i9100_timer.c standard
  pexpert/arm/pe_omap3430.c		standard
+diff --git a/xnu/osfmk/console/video_console.c b/xnu/osfmk/console/video_console.c
+index dbf42f0..41a78e4 100644
+--- a/xnu/osfmk/console/video_console.c
++++ b/xnu/osfmk/console/video_console.c
+@@ -125,6 +125,28 @@
+ 
+ struct vc_info vinfo;
+ 
++#if defined(BOARD_CONFIG_MT8127_TB3)
++/*
++ * The MT8127 scanout memory is 1024x600, while the TB3 panel is presented
++ * in portrait orientation (600x1024).  The display path rotates the memory
++ * clockwise, so map logical portrait pixels back into the landscape buffer.
++ */
++#define VC_TB3_FB_WIDTH       1024U
++#define VC_TB3_FB_HEIGHT      600U
++#define VC_TB3_FB_ROWBYTES    4096U
++#define VC_TB3_LOGICAL_WIDTH  600U
++#define VC_TB3_LOGICAL_HEIGHT 1024U
++#define VC_TB3_FONT_SCALE     2U
++
++static volatile uint32_t *
++vc_tb3_pixel(unsigned int x, unsigned int y)
++{
++	return (volatile uint32_t *)(vinfo.v_baseaddr +
++		((VC_TB3_FB_HEIGHT - 1U - x) * VC_TB3_FB_ROWBYTES) +
++		(y * sizeof(uint32_t)));
++}
++#endif
++
+ void noroot_icon_test(void);
+ boolean_t panicDialogDesired;
+ 
+@@ -1381,10 +1403,36 @@ vc_clear_screen(unsigned int xx, unsigned int yy, unsigned int scrreg_top,
+ 	uint32_t *p, *endp, *row;
+ 	int      linelongs, col;
+ 	int      rowline, rowlongs;
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	unsigned int clear_start, clear_end, clear_row;
++#endif
+ 
+ 	if(!vinfo.v_depth)
+ 		return;
+ 
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	clear_start = scrreg_top;
++	clear_end = scrreg_bottom;
++	switch (which) {
++	case 0:
++		gc_clear_line(xx, yy, 0);
++		clear_start = yy + 1U;
++		break;
++	case 1:
++		gc_clear_line(xx, yy, 1);
++		clear_end = yy;
++		break;
++	case 2:
++		break;
++	default:
++		return;
++	}
++	for (clear_row = clear_start; clear_row < clear_end; clear_row++)
++		for (col = 0; col < (int)vinfo.v_columns; col++)
++			gc_paint_char((unsigned int)col, clear_row, ' ', ATTR_NONE);
++	return;
++#endif
++
+ 	linelongs = vinfo.v_rowbytes * (ISO_CHAR_HEIGHT >> 2);
+ 	rowline = vinfo.v_rowscanbytes >> 2;
+ 	rowlongs = vinfo.v_rowbytes >> 2;
+@@ -1591,6 +1639,32 @@ vc_paint_char_32(unsigned int xx, unsigned int yy, unsigned char ch, int attrs,
+ 	if (attrs_previous) {
+ 		theCharPrevious = NULL;
+ 	}
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	for (i = 0; i < ISO_CHAR_HEIGHT; i++) {
++		int x, dx, dy;
++		uint32_t lastpixel = 0;
++		for (x = 0; x < ISO_CHAR_WIDTH; x++) {
++			uint32_t val = *theChar++, save = val;
++			if (attrs & ATTR_BOLD) {
++				if (lastpixel && !save)
++					val = 0xFFFFFFFF;
++			}
++			if (attrs & ATTR_REVERSE)
++				val = ~val;
++			if ((attrs & ATTR_UNDER) && i == ISO_CHAR_HEIGHT - 1)
++				val = ~val;
++			val = (vc_color_back & ~val) | (vc_color_fore & val);
++			for (dy = 0; dy < (int)VC_TB3_FONT_SCALE; dy++)
++				for (dx = 0; dx < (int)VC_TB3_FONT_SCALE; dx++)
++					*vc_tb3_pixel(xx * ISO_CHAR_WIDTH * VC_TB3_FONT_SCALE +
++					    x * VC_TB3_FONT_SCALE + (unsigned int)dx,
++					    yy * ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE +
++				    i * VC_TB3_FONT_SCALE + (unsigned int)dy) = val;
++			lastpixel = save;
++		}
++	}
++	return;
++#endif
+ 	where = (uint32_t*)(vinfo.v_baseaddr + 
+ 					(yy * ISO_CHAR_HEIGHT * vinfo.v_rowbytes) + 
+ 					(xx * ISO_CHAR_WIDTH * 4));
+@@ -1729,10 +1803,27 @@ vc_reverse_cursor(unsigned int xx, unsigned int yy)
+ {
+ 	uint32_t *where;
+ 	int line, col;
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	unsigned int x, y;
++#endif
+ 
+ 	if(!vinfo.v_depth)
+ 		return;
+ 
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	if (vinfo.v_depth == 32) {
++		for (line = 0; line < ISO_CHAR_HEIGHT; line++)
++			for (col = 0; col < ISO_CHAR_WIDTH; col++)
++				for (y = 0; y < VC_TB3_FONT_SCALE; y++)
++					for (x = 0; x < VC_TB3_FONT_SCALE; x++)
++						*vc_tb3_pixel(xx * ISO_CHAR_WIDTH * VC_TB3_FONT_SCALE +
++						    col * VC_TB3_FONT_SCALE + x,
++						    yy * ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE +
++						    line * VC_TB3_FONT_SCALE + y) ^= 0xFFFFFFFFU;
++		return;
++	}
++#endif
++
+ 	where = (uint32_t*)(vinfo.v_baseaddr + 
+ 			(yy * ISO_CHAR_HEIGHT * vinfo.v_rowbytes) + 
+ 			(xx /** ISO_CHAR_WIDTH*/ * vinfo.v_depth));
+@@ -1759,10 +1850,34 @@ static void
+ vc_scroll_down(int num, unsigned int scrreg_top, unsigned int scrreg_bottom)
+ {
+ 	uint32_t *from, *to,  linelongs, i, line, rowline, rowscanline;
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	unsigned int memrow, start_y, dest_y, copy_lines, col, clear_row;
++	unsigned char *base;
++#endif
+ 
+ 	if(!vinfo.v_depth)
+ 		return;
+ 
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	if (vinfo.v_depth == 32) {
++		start_y = scrreg_top * ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE;
++		dest_y = (scrreg_top + (unsigned int)num) *
++		    ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE;
++		copy_lines = (scrreg_bottom - scrreg_top - (unsigned int)num) *
++		    ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE;
++		base = (unsigned char *)vinfo.v_baseaddr;
++		for (memrow = 0; memrow < VC_TB3_FB_HEIGHT; memrow++) {
++			unsigned char *src = base + memrow * VC_TB3_FB_ROWBYTES + start_y * 4U;
++			unsigned char *dst = base + memrow * VC_TB3_FB_ROWBYTES + dest_y * 4U;
++			video_scroll_down(src + copy_lines * 4U, src, dst + copy_lines * 4U);
++		}
++		for (clear_row = scrreg_top; clear_row < scrreg_top + (unsigned int)num; clear_row++)
++			for (col = 0; col < vinfo.v_columns; col++)
++				gc_paint_char(col, clear_row, ' ', ATTR_NONE);
++		return;
++	}
++#endif
++
+ 	linelongs = vinfo.v_rowbytes * (ISO_CHAR_HEIGHT >> 2);
+ 	rowline = vinfo.v_rowbytes >> 2;
+ 	rowscanline = vinfo.v_rowscanbytes >> 2;
+@@ -1792,10 +1907,34 @@ static void
+ vc_scroll_up(int num, unsigned int scrreg_top, unsigned int scrreg_bottom)
+ {
+ 	uint32_t *from, *to, linelongs, i, line, rowline, rowscanline;
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	unsigned int memrow, start_y, dest_y, copy_lines, col, clear_row;
++	unsigned char *base;
++#endif
+ 
+ 	if(!vinfo.v_depth)
+ 		return;
+ 
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	if (vinfo.v_depth == 32) {
++		dest_y = scrreg_top * ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE;
++		start_y = (scrreg_top + (unsigned int)num) *
++		    ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE;
++		copy_lines = (scrreg_bottom - scrreg_top - (unsigned int)num) *
++		    ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE;
++		base = (unsigned char *)vinfo.v_baseaddr;
++		for (memrow = 0; memrow < VC_TB3_FB_HEIGHT; memrow++) {
++			unsigned char *src = base + memrow * VC_TB3_FB_ROWBYTES + start_y * 4U;
++			unsigned char *dst = base + memrow * VC_TB3_FB_ROWBYTES + dest_y * 4U;
++			video_scroll_up(src, src + copy_lines * 4U, dst);
++		}
++		for (clear_row = scrreg_bottom - (unsigned int)num; clear_row < scrreg_bottom; clear_row++)
++			for (col = 0; col < vinfo.v_columns; col++)
++				gc_paint_char(col, clear_row, ' ', ATTR_NONE);
++		return;
++	}
++#endif
++
+ 	linelongs = vinfo.v_rowbytes * (ISO_CHAR_HEIGHT >> 2);
+ 	rowline = vinfo.v_rowbytes >> 2;
+ 	rowscanline = vinfo.v_rowscanbytes >> 2;
+@@ -2561,8 +2700,13 @@ static void
+ vc_initialize(__unused struct vc_info * vinfo_p)
+ {
+ 
++#if defined(BOARD_CONFIG_MT8127_TB3)
++	vinfo.v_rows = vinfo.v_height / (ISO_CHAR_HEIGHT * VC_TB3_FONT_SCALE);
++	vinfo.v_columns = vinfo.v_width / (ISO_CHAR_WIDTH * VC_TB3_FONT_SCALE);
++#else
+ 	vinfo.v_rows = vinfo.v_height / ISO_CHAR_HEIGHT;
+ 	vinfo.v_columns = vinfo.v_width / ISO_CHAR_WIDTH;
++#endif
+ 	vinfo.v_rowscanbytes = ((vinfo.v_depth + 7) / 8) * vinfo.v_width;
+ 	vc_uiselect = (2 == vinfo.v_scale) ? 1 : 0;
+ }
 
